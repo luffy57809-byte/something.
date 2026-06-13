@@ -1,19 +1,25 @@
-from chess_coach.importers.chesscom import get_recent_games
+from chess_coach.importers.chesscom import get_recent_games as chesscom_games
+from chess_coach.importers.lichess import get_recent_games as lichess_games
 from chess_coach.analysis.game_analyzer import analyze_pgn
 from chess_coach.coaching.templates import generate_explanation
 from chess_coach.database import init_db, save_game, game_exists, load_game, get_user_games
 from chess_coach.stats import get_user_stats, get_game_summary
 
 
-def run_pipeline(username: str, max_games: int = 10, depth: int = 10) -> dict:
+def run_pipeline(username: str, max_games: int = 10, depth: int = 10,
+                 source: str = "chesscom") -> dict:
     """
     Full pipeline: fetch games, analyze new ones, return stats + reports.
-    Already-analyzed games are loaded from DB instantly.
+    source: "chesscom" or "lichess"
     """
     init_db()
 
-    print(f"Fetching recent games for {username}...")
-    raw_games = get_recent_games(username, max_games=max_games)
+    print(f"Fetching recent games for {username} from {source}...")
+
+    if source == "lichess":
+        raw_games = lichess_games(username, max_games=max_games)
+    else:
+        raw_games = chesscom_games(username, max_games=max_games)
 
     records = []
     for raw in raw_games:
@@ -24,10 +30,14 @@ def run_pipeline(username: str, max_games: int = 10, depth: int = 10) -> dict:
             record = load_game(game_id)
         else:
             print(f"  Analyzing new game: {game_id}")
-            record = analyze_pgn(raw["pgn"], depth=depth)
-            for m in record.moves:
-                m.explanation = generate_explanation(m)
-            save_game(record, username)
+            try:
+                record = analyze_pgn(raw["pgn"], depth=depth)
+                for m in record.moves:
+                    m.explanation = generate_explanation(m)
+                save_game(record, username)
+            except Exception as e:
+                print(f"  Skipping game {game_id}: {e}")
+                continue
 
         records.append(record)
 
@@ -35,6 +45,7 @@ def run_pipeline(username: str, max_games: int = 10, depth: int = 10) -> dict:
 
     return {
         "username": username,
+        "source": source,
         "games_analyzed": len(records),
         "stats": stats,
         "records": records,
@@ -42,7 +53,7 @@ def run_pipeline(username: str, max_games: int = 10, depth: int = 10) -> dict:
 
 
 def get_game_report(game_id: str) -> dict | None:
-    """Get the full report for a single game by ID."""
+    """Get the full report for a single analyzed game."""
     record = load_game(game_id)
     if not record:
         return None

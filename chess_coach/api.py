@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from chess_coach.pipeline import run_pipeline, get_game_report
 from chess_coach.database import init_db, get_user_games
@@ -12,15 +12,12 @@ def startup():
     init_db()
 
 
-# --- Request/Response Models ---
-
 class AnalyzeRequest(BaseModel):
     username: str
     max_games: int = 5
     depth: int = 10
+    source: str = "chesscom"
 
-
-# --- Endpoints ---
 
 @app.get("/")
 def root():
@@ -29,18 +26,19 @@ def root():
 
 @app.post("/analyze")
 def analyze(req: AnalyzeRequest):
-    """
-    Fetch and analyze recent games for a Chess.com username.
-    Already-analyzed games are loaded from cache.
-    """
+    """Fetch and analyze recent games. source: 'chesscom' or 'lichess'"""
+    if req.source not in ("chesscom", "lichess"):
+        raise HTTPException(status_code=400, detail="source must be 'chesscom' or 'lichess'")
     try:
         result = run_pipeline(
             username=req.username,
             max_games=req.max_games,
-            depth=req.depth
+            depth=req.depth,
+            source=req.source,
         )
         return {
             "username": result["username"],
+            "source": result["source"],
             "games_analyzed": result["games_analyzed"],
             "stats": result["stats"],
             "game_ids": [r.game_id for r in result["records"]],
@@ -51,7 +49,6 @@ def analyze(req: AnalyzeRequest):
 
 @app.get("/user/{username}/stats")
 def user_stats(username: str):
-    """Get overall stats for a user."""
     stats = get_user_stats(username)
     if not stats:
         raise HTTPException(status_code=404, detail="No analyzed games found for this user")
@@ -60,7 +57,6 @@ def user_stats(username: str):
 
 @app.get("/user/{username}/games")
 def user_games(username: str):
-    """List all analyzed games for a user."""
     games = get_user_games(username)
     if not games:
         raise HTTPException(status_code=404, detail="No games found for this user")
@@ -69,7 +65,6 @@ def user_games(username: str):
 
 @app.get("/game/{game_id:path}")
 def game_report(game_id: str):
-    """Get the full report for a single analyzed game."""
     report = get_game_report(game_id)
     if not report:
         raise HTTPException(status_code=404, detail="Game not found or not yet analyzed")
