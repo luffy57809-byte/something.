@@ -4,15 +4,13 @@ from chess_coach.analysis.game_analyzer import analyze_pgn
 from chess_coach.coaching.templates import generate_explanation
 from chess_coach.database import init_db, save_game, game_exists, load_game, get_user_games
 from chess_coach.stats import get_user_stats, get_game_summary
+from chess_coach.puzzles import init_puzzles_table, extract_game_puzzles
 
 
 def run_pipeline(username: str, max_games: int = 10, depth: int = 10,
                  source: str = "chesscom") -> dict:
-    """
-    Full pipeline: fetch games, analyze new ones, return stats + reports.
-    source: "chesscom" or "lichess"
-    """
     init_db()
+    init_puzzles_table()
 
     print(f"Fetching recent games for {username} from {source}...")
 
@@ -22,6 +20,8 @@ def run_pipeline(username: str, max_games: int = 10, depth: int = 10,
         raw_games = chesscom_games(username, max_games=max_games)
 
     records = []
+    all_puzzles = []
+
     for raw in raw_games:
         game_id = raw["url"]
 
@@ -39,6 +39,9 @@ def run_pipeline(username: str, max_games: int = 10, depth: int = 10,
                 print(f"  Skipping game {game_id}: {e}")
                 continue
 
+        # Extract puzzles from this game
+        puzzles = extract_game_puzzles(record, username)
+        all_puzzles.extend(puzzles)
         records.append(record)
 
     stats = get_user_stats(username)
@@ -47,13 +50,13 @@ def run_pipeline(username: str, max_games: int = 10, depth: int = 10,
         "username": username,
         "source": source,
         "games_analyzed": len(records),
+        "puzzles_generated": len(all_puzzles),
         "stats": stats,
         "records": records,
     }
 
 
 def get_game_report(game_id: str) -> dict | None:
-    """Get the full report for a single analyzed game."""
     record = load_game(game_id)
     if not record:
         return None

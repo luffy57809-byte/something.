@@ -9,6 +9,10 @@ from chess_coach.auth import (
     init_users_table, create_user, authenticate_user,
     create_access_token, decode_token, get_user_by_username
 )
+from chess_coach.puzzles import (
+    init_puzzles_table, get_training_puzzles,
+    record_attempt, get_puzzle_stats
+)
 
 app = FastAPI(title="Chess Coach API")
 
@@ -17,9 +21,8 @@ app = FastAPI(title="Chess Coach API")
 def startup():
     init_db()
     init_users_table()
+    init_puzzles_table()
 
-
-# --- Request Models ---
 
 class RegisterRequest(BaseModel):
     username: str
@@ -39,7 +42,11 @@ class AnalyzeRequest(BaseModel):
     source: str = "chesscom"
 
 
-# --- Auth dependency ---
+class AttemptRequest(BaseModel):
+    puzzle_id: str
+    puzzle_source: str
+    solved: bool
+
 
 def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
     if not authorization or not authorization.startswith("Bearer "):
@@ -54,14 +61,6 @@ def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
     return user
 
 
-def require_premium(current_user: dict = Depends(get_current_user)) -> dict:
-    if not current_user["is_premium"]:
-        raise HTTPException(status_code=403, detail="Premium subscription required")
-    return current_user
-
-
-# --- Endpoints ---
-
 @app.get("/")
 def root():
     return {"message": "Chess Coach API is running"}
@@ -70,7 +69,8 @@ def root():
 @app.post("/auth/register")
 def register(req: RegisterRequest):
     if len(req.password) < 8 or len(req.password.encode()) > 72:
-        raise HTTPException(status_code=400, detail="Password must be between 8 and 72 characters")
+        raise HTTPException(status_code=400,
+                            detail="Password must be between 8 and 72 characters")
     try:
         user = create_user(req.username, req.email, req.password)
         token = create_access_token({"sub": user["username"]})
@@ -109,15 +109,12 @@ def me(current_user: dict = Depends(get_current_user)):
 
 @app.post("/analyze")
 def analyze(req: AnalyzeRequest, current_user: dict = Depends(get_current_user)):
-    """Analyze recent games. Requires authentication."""
     if req.source not in ("chesscom", "lichess"):
-        raise HTTPException(status_code=400, detail="source must be 'chesscom' or 'lichess'")
-
-    # Free users limited to 5 games, premium unlimited
+        raise HTTPException(status_code=400,
+                            detail="source must be 'chesscom' or 'lichess'")
     max_games = req.max_games
     if not current_user["is_premium"] and max_games > 5:
         max_games = 5
-
     try:
         result = run_pipeline(
             username=req.chess_username,
@@ -129,6 +126,7 @@ def analyze(req: AnalyzeRequest, current_user: dict = Depends(get_current_user))
             "username": result["username"],
             "source": result["source"],
             "games_analyzed": result["games_analyzed"],
+            "puzzles_generated": result.get("puzzles_generated", 0),
             "stats": result["stats"],
             "game_ids": [r.game_id for r in result["records"]],
         }
@@ -140,7 +138,8 @@ def analyze(req: AnalyzeRequest, current_user: dict = Depends(get_current_user))
 def user_stats(username: str, current_user: dict = Depends(get_current_user)):
     stats = get_user_stats(username)
     if not stats:
-        raise HTTPException(status_code=404, detail="No analyzed games found for this user")
+        raise HTTPException(status_code=404,
+                            detail="No analyzed games found for this user")
     return {"username": username, "stats": stats}
 
 
@@ -148,7 +147,8 @@ def user_stats(username: str, current_user: dict = Depends(get_current_user)):
 def user_games(username: str, current_user: dict = Depends(get_current_user)):
     games = get_user_games(username)
     if not games:
-        raise HTTPException(status_code=404, detail="No games found for this user")
+        raise HTTPException(status_code=404,
+                            detail="No games found for this user")
     return {"username": username, "games": games}
 
 
@@ -156,5 +156,36 @@ def user_games(username: str, current_user: dict = Depends(get_current_user)):
 def game_report(game_id: str, current_user: dict = Depends(get_current_user)):
     report = get_game_report(game_id)
     if not report:
-        raise HTTPException(status_code=404, detail="Game not found or not yet analyzed")
+        raise HTTPException(status_code=404,
+                            detail="Game not found or not yet analyzed")
     return report
+
+
+@app.get("/puzzles/training")
+def training_puzzles(chess_username: str,
+                     current_user: dict = Depends(get_current_user)):
+    """Get personalized puzzles based on chess username's weaknesses."""
+    puzzles = get_training_puzzles(
+        chess_username=chess_username,
+        app_username=current_user["username"],
+        limit=5
+    )
+    return puzzles
+
+
+@app.post("/puzzles/attempt")
+def submit_attempt(req: AttemptRequest,
+                   current_user: dict = Depends(get_current_user)):
+    record_attempt(
+        username=current_user["username"],
+        puzzle_id=req.puzzle_id,
+        puzzle_source=req.puzzle_source,
+        solved=req.solved
+    )
+    return {"recorded": True}
+
+
+@app.get("/puzzles/stats")
+def puzzle_stats(current_user: dict = Depends(get_current_user)):
+    stats = get_puzzle_stats(current_user["username"])
+    return {"username": current_user["username"], "puzzle_stats": stats}
