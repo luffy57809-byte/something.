@@ -9,6 +9,18 @@ PATTERN_EXPLANATIONS = {
         "opponent's pieces at once with a single piece - a fork. Forks are powerful "
         "because the opponent usually can't save both pieces."
     ),
+    "missed_pin": (
+        "There was a stronger move available that would pin one of your opponent's "
+        "pieces - attacking it in a way that it cannot move without exposing a more "
+        "valuable piece behind it. Pins restrict your opponent's options and often "
+        "win material."
+    ),
+    "back_rank_weakness": (
+        "Your king was left vulnerable on the back rank with pawns blocking its "
+        "escape. This is a common way to lose to a back rank checkmate or heavy "
+        "piece invasion. Consider making a 'luft' move (h3, g3, etc.) to give "
+        "your king an escape square."
+    ),
 }
 
 CLASSIFICATION_INTROS = {
