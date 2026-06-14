@@ -1,0 +1,101 @@
+.trainer-header {
+  margin-bottom: 1.5rem;
+}
+
+.trainer-header h1 {
+  font-size: 1.8rem;
+  color: #e2e8f0;
+}
+
+.trainer-header p {
+  color: #94a3b8;
+  margin-top: 0.3rem;
+}
+
+.puzzle-stats-bar {
+  background: #1e2130;
+  border: 1px solid #2d3148;
+  border-radius: 10px;
+  padding: 0.75rem 1.2rem;
+  display: flex;
+  gap: 2rem;
+  margin-bottom: 1.5rem;
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+
+.puzzle-stats-bar strong {
+  color: #7c9ef8;
+}
+
+.puzzle-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.tab {
+  padding: 0.6rem 1.2rem;
+  border-radius: 8px;
+  border: 1px solid #2d3148;
+  background: #1e2130;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.tab.active {
+  background: #4f6ef7;
+  color: white;
+  border-color: #4f6ef7;
+}
+
+.puzzle-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1rem;
+  max-width: 500px;
+}
+
+.puzzle-info {
+  width: 100%;
+}
+
+.puzzle-label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  margin-bottom: 0.3rem;
+}
+
+.puzzle-pattern {
+  color: #94a3b8;
+  font-size: 0.85rem;
+  text-transform: capitalize;
+  margin-bottom: 0.5rem;
+}
+
+.puzzle-instruction {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #7c9ef8;
+}
+
+.puzzle-feedback {
+  width: 100%;
+  background: #1e2130;
+  border: 1px solid #2d3148;
+  border-radius: 10px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.explanation-text {
+  color: #94a3b8;
+  line-height: 1.6;
+  font-size: 0.9rem;
+}

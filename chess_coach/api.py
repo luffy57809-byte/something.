@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 
@@ -15,6 +16,14 @@ from chess_coach.puzzles import (
 )
 
 app = FastAPI(title="Chess Coach API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.on_event("startup")
@@ -164,7 +173,6 @@ def game_report(game_id: str, current_user: dict = Depends(get_current_user)):
 @app.get("/puzzles/training")
 def training_puzzles(chess_username: str,
                      current_user: dict = Depends(get_current_user)):
-    """Get personalized puzzles based on chess username's weaknesses."""
     puzzles = get_training_puzzles(
         chess_username=chess_username,
         app_username=current_user["username"],
@@ -189,3 +197,5 @@ def submit_attempt(req: AttemptRequest,
 def puzzle_stats(current_user: dict = Depends(get_current_user)):
     stats = get_puzzle_stats(current_user["username"])
     return {"username": current_user["username"], "puzzle_stats": stats}
+
+
