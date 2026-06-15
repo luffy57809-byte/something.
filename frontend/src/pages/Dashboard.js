@@ -4,6 +4,13 @@ import { analyzeGames, getUserGames, getUserStats } from '../api';
 import { useAuth } from '../context/AuthContext';
 import './Dashboard.css';
 
+function getResultClass(game, chessUsername) {
+  const isWhite = game.white.toLowerCase() === chessUsername.toLowerCase();
+  if (game.result === '1-0') return isWhite ? 'result-win' : 'result-loss';
+  if (game.result === '0-1') return isWhite ? 'result-loss' : 'result-win';
+  return 'result-draw';
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -16,6 +23,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [games, setGames] = useState([]);
   const [analyzed, setAnalyzed] = useState(false);
+  const [analyzedUsername, setAnalyzedUsername] = useState('');
 
   const handleAnalyze = async (e) => {
     e.preventDefault();
@@ -29,6 +37,7 @@ export default function Dashboard() {
       ]);
       setStats(statsRes.data.stats);
       setGames(gamesRes.data.games);
+      setAnalyzedUsername(chessUsername);
       setAnalyzed(true);
     } catch (err) {
       setError(err.response?.data?.detail || 'Analysis failed');
@@ -67,7 +76,8 @@ export default function Dashboard() {
             </div>
             <div className="form-group">
               <label>Games to analyze</label>
-              <select value={maxGames} onChange={(e) => setMaxGames(Number(e.target.value))}>
+              <select value={maxGames}
+                onChange={(e) => setMaxGames(Number(e.target.value))}>
                 <option value={3}>3 games</option>
                 <option value={5}>5 games</option>
                 {user.is_premium && <option value={10}>10 games</option>}
@@ -110,10 +120,7 @@ export default function Dashboard() {
                 ⚠️ You most often struggle with{' '}
                 <strong>{stats.top_weakness.replace(/_/g, ' ')}</strong>.
                 Head to the{' '}
-                <span
-                  className="link"
-                  onClick={() => navigate('/puzzles')}
-                >
+                <span className="link" onClick={() => navigate('/puzzles')}>
                   Puzzle Trainer
                 </span>{' '}
                 to work on this.
@@ -128,13 +135,15 @@ export default function Dashboard() {
                 <div
                   key={g.game_id}
                   className="game-row"
-                  onClick={() => navigate(`/game/${encodeURIComponent(g.game_id)}`)}
+                  onClick={() =>
+                    navigate(`/game/${encodeURIComponent(g.game_id)}`)
+                  }
                 >
                   <div className="game-players">
                     {g.white} vs {g.black}
                   </div>
                   <div className="game-meta">
-                    <span className={`result result-${g.result.replace('/', '-')}`}>
+                    <span className={`result ${getResultClass(g, analyzedUsername)}`}>
                       {g.result}
                     </span>
                     <span className="game-date">{g.date}</span>

@@ -112,3 +112,7 @@
 .result-1-0 { color: #22c55e; }
 .result-0-1 { color: #ef4444; }
 .result-1-2-1-2 { color: #eab308; }
+
+.result-win  { color: #22c55e; font-weight: 700; }
+.result-loss { color: #ef4444; font-weight: 700; }
+.result-draw { color: #eab308; font-weight: 700; }
