@@ -3,7 +3,8 @@ import json
 import os
 from chess_coach.models import GameRecord, MoveAnalysis
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "..", "chess_coach.db")
+# Use environment variable for DB path in production, fallback to local
+DB_PATH = os.environ.get("DB_PATH", os.path.join(os.path.dirname(__file__), "..", "chess_coach.db"))
 
 
 def get_connection():
@@ -13,7 +14,6 @@ def get_connection():
 
 
 def init_db():
-    """Create tables if they don't exist."""
     conn = get_connection()
     c = conn.cursor()
 
@@ -56,7 +56,6 @@ def init_db():
 
 
 def save_game(record: GameRecord, username: str):
-    """Save a fully analyzed game to the database."""
     conn = get_connection()
     c = conn.cursor()
 
@@ -88,7 +87,6 @@ def save_game(record: GameRecord, username: str):
 
 
 def game_exists(game_id: str) -> bool:
-    """Check if a game has already been analyzed and saved."""
     conn = get_connection()
     c = conn.cursor()
     c.execute("SELECT analyzed FROM games WHERE game_id = ?", (game_id,))
@@ -98,7 +96,6 @@ def game_exists(game_id: str) -> bool:
 
 
 def load_game(game_id: str) -> GameRecord | None:
-    """Load a fully analyzed game from the database."""
     conn = get_connection()
     c = conn.cursor()
 
@@ -143,7 +140,6 @@ def load_game(game_id: str) -> GameRecord | None:
 
 
 def get_user_games(username: str) -> list[dict]:
-    """Get summary of all analyzed games for a user."""
     conn = get_connection()
     c = conn.cursor()
     c.execute("""

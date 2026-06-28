@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: chess-coach-api
+    env: python
+    buildCommand: pip install -r requirements.txt && apt-get install -y stockfish
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DB_PATH
+        value: /opt/render/project/src/chess_coach.db

@@ -1,0 +1,11 @@
+{
+  "name": "Chess Coach",
+  "postStartCommand": "cd /workspaces/something. && source venv/bin/activate && uvicorn main:app --host 0.0.0.0 --port 8000 &",
+  "forwardPorts": [8000, 3000],
+  "portsAttributes": {
+    "8000": {
+      "visibility": "public",
+      "label": "Chess Coach API"
+    }
+  }
+}

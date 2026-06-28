@@ -145,3 +145,27 @@
   line-height: 1.6;
   font-size: 0.95rem;
 }
+
+.board-mode-label {
+  color: #94a3b8;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.board-controls {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.move-feedback {
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+.move-feedback.correct { background: #22c55e22; color: #22c55e; }
+.move-feedback.wrong   { background: #ef444422; color: #ef4444; }
+.move-feedback.shown   { background: #7c9ef822; color: #7c9ef8; }
