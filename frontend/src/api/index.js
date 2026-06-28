@@ -1,9 +1,7 @@
 import axios from 'axios';
 
-const BASE = window.location.origin;
-
 const API = axios.create({
-  baseURL: BASE,
+  baseURL: 'https://something-p8bx.onrender.com',
 });
 
 API.interceptors.request.use((config) => {
