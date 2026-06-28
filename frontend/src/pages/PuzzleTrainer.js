@@ -25,6 +25,7 @@ export default function PuzzleTrainer() {
 
   useEffect(() => {
     getPuzzleStats().then((res) => setPuzzleStats(res.data.puzzle_stats));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

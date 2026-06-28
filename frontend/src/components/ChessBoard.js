@@ -31,9 +31,6 @@ function squareName(rankIdx, fileIdx) {
   return String.fromCharCode(97 + fileIdx) + (8 - rankIdx);
 }
 
-function isWhitePiece(p) { return p && p === p.toUpperCase() && p !== p.toLowerCase(); }
-function isBlackPiece(p) { return p && p === p.toLowerCase() && p !== p.toUpperCase(); }
-
 export default function ChessBoard({ fen, onDrop, draggable }) {
   const [board, setBoard] = useState([]);
   const [dragFrom, setDragFrom] = useState(null);
@@ -70,16 +67,13 @@ export default function ChessBoard({ fen, onDrop, draggable }) {
     e.preventDefault();
     setDragOver(null);
     if (!dragFrom) return;
-
     const [fromRank, fromFile] = dragFrom;
     if (fromRank === rankIdx && fromFile === fileIdx) {
       setDragFrom(null);
       return;
     }
-
     const from = squareName(fromRank, fromFile);
     const to = squareName(rankIdx, fileIdx);
-    console.log('Drop:', from, '->', to);
     if (onDrop) onDrop(from, to);
     setDragFrom(null);
   };
@@ -103,7 +97,6 @@ export default function ChessBoard({ fen, onDrop, draggable }) {
             }}>{n}</div>
           ))}
         </div>
-
         <div>
           <div style={{
             display: 'grid',
@@ -120,7 +113,6 @@ export default function ChessBoard({ fen, onDrop, draggable }) {
                   dragFrom[0] === rankIdx && dragFrom[1] === fileIdx;
                 const isDragTarget = dragOver &&
                   dragOver[0] === rankIdx && dragOver[1] === fileIdx;
-
                 return (
                   <div
                     key={`${rankIdx}-${fileIdx}`}
@@ -128,8 +120,7 @@ export default function ChessBoard({ fen, onDrop, draggable }) {
                     onDragLeave={handleDragLeave}
                     onDrop={(e) => handleDrop(e, rankIdx, fileIdx)}
                     style={{
-                      width: 52,
-                      height: 52,
+                      width: 52, height: 52,
                       background: isDragSource ? '#f6f669'
                         : isDragTarget ? '#baca2b'
                         : isLight ? '#e2e8f0' : '#4a5568',
@@ -164,7 +155,6 @@ export default function ChessBoard({ fen, onDrop, draggable }) {
               })
             )}
           </div>
-
           <div style={{ display: 'flex', marginTop: '2px' }}>
             {['a','b','c','d','e','f','g','h'].map(f => (
               <div key={f} style={{
