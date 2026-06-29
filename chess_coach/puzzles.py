@@ -1,7 +1,7 @@
 import json
 import requests as http_requests
-from chess_coach.database import get_connection
-
+from sqlalchemy import text
+from chess_coach.database import engine
 
 PATTERN_TO_THEME = {
     "missed_fork": "fork",
@@ -12,98 +12,102 @@ PATTERN_TO_THEME = {
 
 
 def init_puzzles_table():
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS puzzles (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            puzzle_id TEXT UNIQUE NOT NULL,
-            fen TEXT NOT NULL,
-            moves TEXT NOT NULL,
-            rating INTEGER,
-            themes TEXT,
-            game_url TEXT,
-            source TEXT DEFAULT 'lichess'
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS game_puzzles (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            puzzle_id TEXT UNIQUE,
-            game_id TEXT NOT NULL,
-            chess_username TEXT NOT NULL,
-            move_number INTEGER NOT NULL,
-            color TEXT NOT NULL,
-            fen TEXT NOT NULL,
-            best_move TEXT NOT NULL,
-            classification TEXT NOT NULL,
-            pattern_tags TEXT NOT NULL,
-            explanation TEXT,
-            source TEXT DEFAULT 'game'
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS puzzle_attempts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL,
-            puzzle_id TEXT NOT NULL,
-            puzzle_source TEXT NOT NULL,
-            solved INTEGER NOT NULL,
-            attempted_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    conn.commit()
-    conn.close()
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS puzzles (
+                id SERIAL PRIMARY KEY,
+                puzzle_id TEXT UNIQUE NOT NULL,
+                fen TEXT NOT NULL,
+                moves TEXT NOT NULL,
+                rating INTEGER,
+                themes TEXT,
+                game_url TEXT,
+                source TEXT DEFAULT 'lichess'
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS game_puzzles (
+                id SERIAL PRIMARY KEY,
+                puzzle_id TEXT UNIQUE,
+                game_id TEXT NOT NULL,
+                chess_username TEXT NOT NULL,
+                move_number INTEGER NOT NULL,
+                color TEXT NOT NULL,
+                fen TEXT NOT NULL,
+                best_move TEXT NOT NULL,
+                classification TEXT NOT NULL,
+                pattern_tags TEXT NOT NULL,
+                explanation TEXT,
+                source TEXT DEFAULT 'game'
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS puzzle_attempts (
+                id SERIAL PRIMARY KEY,
+                username TEXT NOT NULL,
+                puzzle_id TEXT NOT NULL,
+                puzzle_source TEXT NOT NULL,
+                solved INTEGER NOT NULL,
+                attempted_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+        conn.commit()
 
 
 def extract_game_puzzles(record, chess_username: str) -> list[dict]:
-    """Turn blunders and mistakes from an analyzed game into puzzles."""
-    conn = get_connection()
-    c = conn.cursor()
     puzzles = []
+    with engine.connect() as conn:
+        for m in record.moves:
+            if m.classification not in ("blunder", "mistake"):
+                continue
+            if not m.best_move_san:
+                continue
 
-    for m in record.moves:
-        if m.classification not in ("blunder", "mistake"):
-            continue
-        if not m.best_move_san:
-            continue
+            puzzle_id = f"{record.game_id}__move{m.move_number}_{m.color}"
 
-        puzzle_id = f"{record.game_id}__move{m.move_number}_{m.color}"
+            existing = conn.execute(
+                text("SELECT id FROM game_puzzles WHERE puzzle_id = :pid"),
+                {"pid": puzzle_id}
+            ).fetchone()
+            if existing:
+                continue
 
-        c.execute("SELECT id FROM game_puzzles WHERE puzzle_id = ?", (puzzle_id,))
-        if c.fetchone():
-            continue
+            conn.execute(text("""
+                INSERT INTO game_puzzles
+                (puzzle_id, game_id, chess_username, move_number, color, fen,
+                 best_move, classification, pattern_tags, explanation, source)
+                VALUES (:puzzle_id, :game_id, :chess_username, :move_number,
+                        :color, :fen, :best_move, :classification,
+                        :pattern_tags, :explanation, 'game')
+            """), {
+                "puzzle_id": puzzle_id,
+                "game_id": record.game_id,
+                "chess_username": chess_username,
+                "move_number": m.move_number,
+                "color": m.color,
+                "fen": m.fen_before,
+                "best_move": m.best_move_san,
+                "classification": m.classification,
+                "pattern_tags": json.dumps(m.pattern_tags),
+                "explanation": m.explanation
+            })
 
-        c.execute("""
-            INSERT INTO game_puzzles
-            (puzzle_id, game_id, chess_username, move_number, color, fen,
-             best_move, classification, pattern_tags, explanation, source)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'game')
-        """, (
-            puzzle_id, record.game_id, chess_username,
-            m.move_number, m.color, m.fen_before, m.best_move_san,
-            m.classification, json.dumps(m.pattern_tags), m.explanation
-        ))
-
-        puzzles.append({
-            "puzzle_id": puzzle_id,
-            "fen": m.fen_before,
-            "best_move": m.best_move_san,
-            "classification": m.classification,
-            "pattern_tags": m.pattern_tags,
-            "explanation": m.explanation,
-            "move_number": m.move_number,
-            "color": m.color,
-            "source": "game",
-        })
-
-    conn.commit()
-    conn.close()
+            puzzles.append({
+                "puzzle_id": puzzle_id,
+                "fen": m.fen_before,
+                "best_move": m.best_move_san,
+                "classification": m.classification,
+                "pattern_tags": m.pattern_tags,
+                "explanation": m.explanation,
+                "move_number": m.move_number,
+                "color": m.color,
+                "source": "game",
+            })
+        conn.commit()
     return puzzles
 
 
 def fetch_lichess_puzzle(theme: str) -> dict | None:
-    """Fetch a single puzzle from Lichess for a given theme."""
     url = "https://lichess.org/api/puzzle/next"
     resp = http_requests.get(url, params={"angle": theme})
     if resp.status_code != 200:
@@ -122,20 +126,13 @@ def fetch_lichess_puzzle(theme: str) -> dict | None:
 
 
 def save_lichess_puzzle(puzzle: dict):
-    conn = get_connection()
-    c = conn.cursor()
-    try:
-        c.execute("""
-            INSERT OR IGNORE INTO puzzles
-            (puzzle_id, fen, moves, rating, themes, game_url, source)
-            VALUES (?, ?, ?, ?, ?, ?, 'lichess')
-        """, (
-            puzzle["puzzle_id"], puzzle["fen"], puzzle["moves"],
-            puzzle["rating"], puzzle["themes"], puzzle["game_url"]
-        ))
+    with engine.connect() as conn:
+        conn.execute(text("""
+            INSERT INTO puzzles (puzzle_id, fen, moves, rating, themes, game_url, source)
+            VALUES (:puzzle_id, :fen, :moves, :rating, :themes, :game_url, 'lichess')
+            ON CONFLICT (puzzle_id) DO NOTHING
+        """), puzzle)
         conn.commit()
-    finally:
-        conn.close()
 
 
 def get_themed_puzzle(theme: str) -> dict | None:
@@ -147,34 +144,42 @@ def get_themed_puzzle(theme: str) -> dict | None:
 
 def get_training_puzzles(chess_username: str, app_username: str,
                          limit: int = 5) -> dict:
-    """
-    Return a mix of game-based puzzles and Lichess puzzles
-    matched to the user's weaknesses.
-    """
     from chess_coach.stats import get_user_stats
 
-    conn = get_connection()
-    c = conn.cursor()
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT gp.*
+            FROM game_puzzles gp
+            WHERE gp.chess_username = :username
+            AND gp.puzzle_id NOT IN (
+                SELECT puzzle_id FROM puzzle_attempts
+                WHERE username = :app_username AND solved = 1
+            )
+            ORDER BY gp.id DESC
+            LIMIT :limit
+        """), {
+            "username": chess_username,
+            "app_username": app_username,
+            "limit": limit
+        }).fetchall()
 
-    c.execute("""
-        SELECT gp.*
-        FROM game_puzzles gp
-        WHERE gp.chess_username = ?
-        AND gp.puzzle_id NOT IN (
-            SELECT puzzle_id FROM puzzle_attempts
-            WHERE username = ? AND solved = 1
-        )
-        ORDER BY gp.id DESC
-        LIMIT ?
-    """, (chess_username, app_username, limit))
-    game_puzzles = [dict(r) for r in c.fetchall()]
-    conn.close()
+    game_puzzles = []
+    for row in rows:
+        game_puzzles.append({
+            "id": row[0],
+            "puzzle_id": row[1],
+            "game_id": row[2],
+            "chess_username": row[3],
+            "move_number": row[4],
+            "color": row[5],
+            "fen_before": row[6],
+            "best_move": row[7],
+            "classification": row[8],
+            "pattern_tags": json.loads(row[9] or "[]"),
+            "explanation": row[10],
+            "source": row[11],
+        })
 
-    # Parse pattern_tags back to list
-    for p in game_puzzles:
-        p["pattern_tags"] = json.loads(p["pattern_tags"] or "[]")
-
-    # Get weaknesses and fetch matching Lichess puzzles
     stats = get_user_stats(chess_username)
     pattern_counts = stats.get("pattern_counts", {})
 
@@ -199,30 +204,35 @@ def get_training_puzzles(chess_username: str, app_username: str,
 
 def record_attempt(username: str, puzzle_id: str,
                    puzzle_source: str, solved: bool):
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("""
-        INSERT INTO puzzle_attempts
-        (username, puzzle_id, puzzle_source, solved)
-        VALUES (?, ?, ?, ?)
-    """, (username, puzzle_id, puzzle_source, 1 if solved else 0))
-    conn.commit()
-    conn.close()
+    with engine.connect() as conn:
+        conn.execute(text("""
+            INSERT INTO puzzle_attempts
+            (username, puzzle_id, puzzle_source, solved)
+            VALUES (:username, :puzzle_id, :puzzle_source, :solved)
+        """), {
+            "username": username,
+            "puzzle_id": puzzle_id,
+            "puzzle_source": puzzle_source,
+            "solved": 1 if solved else 0
+        })
+        conn.commit()
 
 
 def get_puzzle_stats(username: str) -> dict:
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("""
-        SELECT
-            COUNT(*) as total_attempts,
-            SUM(solved) as total_solved,
-            COUNT(DISTINCT puzzle_id) as unique_puzzles
-        FROM puzzle_attempts WHERE username = ?
-    """, (username,))
-    row = dict(c.fetchone())
-    conn.close()
-    total = row["total_attempts"] or 0
-    solved = row["total_solved"] or 0
-    row["solve_rate_pct"] = round((solved / total) * 100, 1) if total else 0
-    return row
+    with engine.connect() as conn:
+        row = conn.execute(text("""
+            SELECT
+                COUNT(*) as total_attempts,
+                SUM(solved) as total_solved,
+                COUNT(DISTINCT puzzle_id) as unique_puzzles
+            FROM puzzle_attempts WHERE username = :username
+        """), {"username": username}).fetchone()
+
+    total = row[0] or 0
+    solved = row[1] or 0
+    return {
+        "total_attempts": total,
+        "total_solved": solved,
+        "unique_puzzles": row[2] or 0,
+        "solve_rate_pct": round((solved / total) * 100, 1) if total else 0
+    }

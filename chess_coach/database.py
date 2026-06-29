@@ -1,138 +1,156 @@
-import sqlite3
-import json
 import os
+import json
 from chess_coach.models import GameRecord, MoveAnalysis
+from sqlalchemy import create_engine, text
 
-# Use environment variable for DB path in production, fallback to local
-DB_PATH = os.environ.get("DB_PATH", os.path.join(os.path.dirname(__file__), "..", "chess_coach.db"))
+# Use Supabase PostgreSQL in production, SQLite locally
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL",
+    "sqlite:///chess_coach.db"
+)
+
+# Fix for SQLAlchemy + PostgreSQL URL format
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+engine = create_engine(DATABASE_URL)
 
 
 def get_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return engine.connect()
 
 
 def init_db():
-    conn = get_connection()
-    c = conn.cursor()
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS games (
+                game_id TEXT PRIMARY KEY,
+                username TEXT NOT NULL,
+                pgn TEXT NOT NULL,
+                white TEXT NOT NULL,
+                black TEXT NOT NULL,
+                result TEXT NOT NULL,
+                time_control TEXT,
+                date TEXT,
+                analyzed INTEGER DEFAULT 0
+            )
+        """))
 
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS games (
-            game_id TEXT PRIMARY KEY,
-            username TEXT NOT NULL,
-            pgn TEXT NOT NULL,
-            white TEXT NOT NULL,
-            black TEXT NOT NULL,
-            result TEXT NOT NULL,
-            time_control TEXT,
-            date TEXT,
-            analyzed INTEGER DEFAULT 0
-        )
-    """)
-
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS moves (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            game_id TEXT NOT NULL,
-            move_number INTEGER NOT NULL,
-            color TEXT NOT NULL,
-            move_san TEXT NOT NULL,
-            fen_before TEXT NOT NULL,
-            fen_after TEXT NOT NULL,
-            eval_before INTEGER,
-            eval_after INTEGER,
-            best_move_san TEXT,
-            eval_drop INTEGER,
-            classification TEXT,
-            pattern_tags TEXT,
-            explanation TEXT,
-            FOREIGN KEY (game_id) REFERENCES games (game_id)
-        )
-    """)
-
-    conn.commit()
-    conn.close()
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS moves (
+                id SERIAL PRIMARY KEY,
+                game_id TEXT NOT NULL,
+                move_number INTEGER NOT NULL,
+                color TEXT NOT NULL,
+                move_san TEXT NOT NULL,
+                fen_before TEXT NOT NULL,
+                fen_after TEXT NOT NULL,
+                eval_before INTEGER,
+                eval_after INTEGER,
+                best_move_san TEXT,
+                eval_drop INTEGER,
+                classification TEXT,
+                pattern_tags TEXT,
+                explanation TEXT,
+                FOREIGN KEY (game_id) REFERENCES games (game_id)
+            )
+        """))
+        conn.commit()
 
 
 def save_game(record: GameRecord, username: str):
-    conn = get_connection()
-    c = conn.cursor()
+    with engine.connect() as conn:
+        conn.execute(text("""
+            INSERT INTO games
+            (game_id, username, pgn, white, black, result, time_control, date, analyzed)
+            VALUES (:game_id, :username, :pgn, :white, :black, :result,
+                    :time_control, :date, 1)
+            ON CONFLICT (game_id) DO UPDATE SET analyzed = 1
+        """), {
+            "game_id": record.game_id, "username": username,
+            "pgn": record.pgn, "white": record.white,
+            "black": record.black, "result": record.result,
+            "time_control": record.time_control, "date": record.date
+        })
 
-    c.execute("""
-        INSERT OR REPLACE INTO games
-        (game_id, username, pgn, white, black, result, time_control, date, analyzed)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
-    """, (record.game_id, username, record.pgn, record.white,
-          record.black, record.result, record.time_control, record.date))
+        conn.execute(text("DELETE FROM moves WHERE game_id = :game_id"),
+                     {"game_id": record.game_id})
 
-    c.execute("DELETE FROM moves WHERE game_id = ?", (record.game_id,))
-
-    for m in record.moves:
-        c.execute("""
-            INSERT INTO moves
-            (game_id, move_number, color, move_san, fen_before, fen_after,
-             eval_before, eval_after, best_move_san, eval_drop,
-             classification, pattern_tags, explanation)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            record.game_id, m.move_number, m.color, m.move_san,
-            m.fen_before, m.fen_after, m.eval_before, m.eval_after,
-            m.best_move_san, m.eval_drop, m.classification,
-            json.dumps(m.pattern_tags), m.explanation
-        ))
-
-    conn.commit()
-    conn.close()
+        for m in record.moves:
+            conn.execute(text("""
+                INSERT INTO moves
+                (game_id, move_number, color, move_san, fen_before, fen_after,
+                 eval_before, eval_after, best_move_san, eval_drop,
+                 classification, pattern_tags, explanation)
+                VALUES (:game_id, :move_number, :color, :move_san, :fen_before,
+                        :fen_after, :eval_before, :eval_after, :best_move_san,
+                        :eval_drop, :classification, :pattern_tags, :explanation)
+            """), {
+                "game_id": record.game_id,
+                "move_number": m.move_number,
+                "color": m.color,
+                "move_san": m.move_san,
+                "fen_before": m.fen_before,
+                "fen_after": m.fen_after,
+                "eval_before": m.eval_before,
+                "eval_after": m.eval_after,
+                "best_move_san": m.best_move_san,
+                "eval_drop": m.eval_drop,
+                "classification": m.classification,
+                "pattern_tags": json.dumps(m.pattern_tags),
+                "explanation": m.explanation
+            })
+        conn.commit()
 
 
 def game_exists(game_id: str) -> bool:
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("SELECT analyzed FROM games WHERE game_id = ?", (game_id,))
-    row = c.fetchone()
-    conn.close()
-    return row is not None and row["analyzed"] == 1
+    with engine.connect() as conn:
+        result = conn.execute(
+            text("SELECT analyzed FROM games WHERE game_id = :game_id"),
+            {"game_id": game_id}
+        ).fetchone()
+        return result is not None and result[0] == 1
 
 
 def load_game(game_id: str) -> GameRecord | None:
-    conn = get_connection()
-    c = conn.cursor()
+    with engine.connect() as conn:
+        game_row = conn.execute(
+            text("SELECT * FROM games WHERE game_id = :game_id"),
+            {"game_id": game_id}
+        ).fetchone()
 
-    c.execute("SELECT * FROM games WHERE game_id = ?", (game_id,))
-    game_row = c.fetchone()
-    if not game_row:
-        conn.close()
-        return None
+        if not game_row:
+            return None
 
-    c.execute("SELECT * FROM moves WHERE game_id = ? ORDER BY id", (game_id,))
-    move_rows = c.fetchall()
-    conn.close()
+        move_rows = conn.execute(
+            text("SELECT * FROM moves WHERE game_id = :game_id ORDER BY id"),
+            {"game_id": game_id}
+        ).fetchall()
 
     record = GameRecord(
-        game_id=game_row["game_id"],
-        pgn=game_row["pgn"],
-        white=game_row["white"],
-        black=game_row["black"],
-        result=game_row["result"],
-        time_control=game_row["time_control"],
-        date=game_row["date"],
+        game_id=game_row[0],
+        pgn=game_row[2],
+        white=game_row[3],
+        black=game_row[4],
+        result=game_row[5],
+        time_control=game_row[6],
+        date=game_row[7],
     )
 
     for row in move_rows:
         m = MoveAnalysis(
-            move_number=row["move_number"],
-            color=row["color"],
-            move_san=row["move_san"],
-            fen_before=row["fen_before"],
-            fen_after=row["fen_after"],
-            eval_before=row["eval_before"],
-            eval_after=row["eval_after"],
-            best_move_san=row["best_move_san"],
-            eval_drop=row["eval_drop"],
-            classification=row["classification"],
-            pattern_tags=json.loads(row["pattern_tags"] or "[]"),
-            explanation=row["explanation"],
+            move_number=row[2],
+            color=row[3],
+            move_san=row[4],
+            fen_before=row[5],
+            fen_after=row[6],
+            eval_before=row[7],
+            eval_after=row[8],
+            best_move_san=row[9],
+            eval_drop=row[10],
+            classification=row[11],
+            pattern_tags=json.loads(row[12] or "[]"),
+            explanation=row[13],
         )
         record.moves.append(m)
 
@@ -140,13 +158,22 @@ def load_game(game_id: str) -> GameRecord | None:
 
 
 def get_user_games(username: str) -> list[dict]:
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("""
-        SELECT game_id, white, black, result, date, time_control
-        FROM games WHERE username = ?
-        ORDER BY date DESC
-    """, (username,))
-    rows = c.fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT game_id, white, black, result, date, time_control
+            FROM games WHERE username = :username
+            ORDER BY date DESC
+        """), {"username": username}).fetchall()
+
+    return [
+        {
+            "game_id": r[0], "white": r[1], "black": r[2],
+            "result": r[3], "date": r[4], "time_control": r[5]
+        }
+        for r in rows
+    ]
+
+
+def get_connection_raw():
+    """For backward compatibility with code using raw connections."""
+    return engine.connect()

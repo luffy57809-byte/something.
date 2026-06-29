@@ -1,41 +1,35 @@
 import os
-import sqlite3
 from datetime import datetime, timedelta
 from typing import Optional
-
+from sqlalchemy import text
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-
-from chess_coach.database import get_connection
+from chess_coach.database import engine
 
 SECRET_KEY = os.environ.get("JWT_SECRET", "change-this-in-production-please")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 1 week
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
 
 
 def init_users_table():
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            hashed_password TEXT NOT NULL,
-            is_premium INTEGER DEFAULT 0,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    conn.commit()
-    conn.close()
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                hashed_password TEXT NOT NULL,
+                is_premium INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+        conn.commit()
 
 
 def _truncate_password(password: str) -> str:
-    """Bcrypt only handles up to 72 bytes - truncate safely."""
-    encoded = password.encode("utf-8")
-    return encoded[:72].decode("utf-8", errors="ignore")
+    return password.encode("utf-8")[:72].decode("utf-8", errors="ignore")
 
 
 def hash_password(password: str) -> str:
@@ -47,46 +41,41 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_user(username: str, email: str, password: str) -> dict:
-    conn = get_connection()
-    c = conn.cursor()
-    try:
-        c.execute("""
-            INSERT INTO users (username, email, hashed_password)
-            VALUES (?, ?, ?)
-        """, (username, email, hash_password(password)))
-        conn.commit()
-        user_id = c.lastrowid
-    except sqlite3.IntegrityError as e:
-        conn.close()
-        if "username" in str(e):
-            raise ValueError("Username already taken")
-        if "email" in str(e):
-            raise ValueError("Email already registered")
-        raise
-    conn.close()
-    return {"id": user_id, "username": username, "email": email, "is_premium": False}
+    with engine.connect() as conn:
+        try:
+            result = conn.execute(text("""
+                INSERT INTO users (username, email, hashed_password)
+                VALUES (:username, :email, :hashed_password)
+                RETURNING id
+            """), {
+                "username": username,
+                "email": email,
+                "hashed_password": hash_password(password)
+            })
+            user_id = result.fetchone()[0]
+            conn.commit()
+        except Exception as e:
+            if "username" in str(e):
+                raise ValueError("Username already taken")
+            if "email" in str(e):
+                raise ValueError("Email already registered")
+            raise
+    return {"id": user_id, "username": username,
+            "email": email, "is_premium": False}
 
 
 def get_user_by_username(username: str) -> Optional[dict]:
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("SELECT * FROM users WHERE username = ?", (username,))
-    row = c.fetchone()
-    conn.close()
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT * FROM users WHERE username = :username"),
+            {"username": username}
+        ).fetchone()
     if not row:
         return None
-    return dict(row)
-
-
-def get_user_by_email(email: str) -> Optional[dict]:
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("SELECT * FROM users WHERE email = ?", (email,))
-    row = c.fetchone()
-    conn.close()
-    if not row:
-        return None
-    return dict(row)
+    return {
+        "id": row[0], "username": row[1], "email": row[2],
+        "hashed_password": row[3], "is_premium": row[4]
+    }
 
 
 def authenticate_user(username: str, password: str) -> Optional[dict]:
@@ -107,7 +96,6 @@ def create_access_token(data: dict) -> str:
 
 def decode_token(token: str) -> Optional[dict]:
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except JWTError:
         return None
