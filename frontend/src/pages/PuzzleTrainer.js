@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Chess } from 'chess.js';
 import ChessBoard from '../components/ChessBoard';
 import { getTrainingPuzzles, submitAttempt, getPuzzleStats } from '../api';
 import './PuzzleTrainer.css';
@@ -30,7 +31,8 @@ export default function PuzzleTrainer() {
       if (fen) setCurrentFen(fen);
       setMoveStatus('');
     }
-  }, [currentIndex, currentType, currentPuzzle]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIndex, currentType]);
 
   const handleLoad = async (e) => {
     e.preventDefault();
@@ -58,9 +60,25 @@ export default function PuzzleTrainer() {
 
   const onDrop = (from, to) => {
     if (!currentPuzzle || moveStatus) return false;
-    const best = currentPuzzle.best_move || currentPuzzle.moves?.split(' ')[0] || '';
-    const move = `${from}${to}`;
-    const isCorrect = move === best || from + to === best;
+
+    const fen = currentPuzzle.fen_before || currentPuzzle.fen;
+    if (!fen) return false;
+
+    // Use chess.js to make the move and get SAN notation
+    const game = new Chess(fen);
+    let moveSan = null;
+    try {
+      const result = game.move({ from, to, promotion: 'q' });
+      if (!result) return false;
+      moveSan = result.san;
+    } catch {
+      return false;
+    }
+
+    const best = currentPuzzle.best_move || '';
+
+    // Compare SAN to SAN
+    const isCorrect = moveSan === best;
 
     if (isCorrect) {
       setMoveStatus('correct');
@@ -91,6 +109,16 @@ export default function PuzzleTrainer() {
       const fen = currentPuzzle.fen_before || currentPuzzle.fen;
       if (fen) setCurrentFen(fen);
       setMoveStatus('');
+    }
+  };
+
+  const getPuzzleTags = (puzzle) => {
+    try {
+      if (!puzzle.pattern_tags) return [];
+      if (Array.isArray(puzzle.pattern_tags)) return puzzle.pattern_tags;
+      return JSON.parse(puzzle.pattern_tags);
+    } catch {
+      return [];
     }
   };
 
@@ -157,11 +185,9 @@ export default function PuzzleTrainer() {
                         {currentPuzzle.classification}
                       </span>
                     </p>
-                    {currentPuzzle.pattern_tags?.length > 0 && (
+                    {getPuzzleTags(currentPuzzle).length > 0 && (
                       <p className="puzzle-pattern">
-                        Pattern: {JSON.parse(typeof currentPuzzle.pattern_tags === 'string'
-                          ? currentPuzzle.pattern_tags : JSON.stringify(currentPuzzle.pattern_tags)
-                        ).join(', ').replace(/_/g, ' ')}
+                        Pattern: {getPuzzleTags(currentPuzzle).join(', ').replace(/_/g, ' ')}
                       </p>
                     )}
                   </>
@@ -177,15 +203,17 @@ export default function PuzzleTrainer() {
                 )}
 
                 <p className="puzzle-instruction">
-                  {moveStatus === '' && '🎯 Find the best move — drag a piece!'}
+                  {!moveStatus && '🎯 Find the best move — drag a piece!'}
                   {moveStatus === 'correct' && '✓ Correct! Well done.'}
-                  {moveStatus === 'wrong' && `✗ Not quite. Best was ${currentPuzzle.best_move || ''}`}
-                  {moveStatus === 'done' && 'All puzzles complete!'}
+                  {moveStatus === 'wrong' && (
+                    <>✗ Not quite. Best was <strong>{currentPuzzle.best_move}</strong></>
+                  )}
+                  {moveStatus === 'done' && '🎉 All puzzles complete!'}
                 </p>
               </div>
 
               <ChessBoard
-                key={currentFen}
+                key={currentFen + currentIndex}
                 fen={currentFen}
                 onDrop={onDrop}
                 draggable={!moveStatus}

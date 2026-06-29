@@ -39,7 +39,6 @@ def run_pipeline(username: str, max_games: int = 10, depth: int = 10,
                 print(f"  Skipping game {game_id}: {e}")
                 continue
 
-        # Extract puzzles from this game
         puzzles = extract_game_puzzles(record, username)
         all_puzzles.extend(puzzles)
         records.append(record)
