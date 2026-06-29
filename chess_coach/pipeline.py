@@ -3,7 +3,7 @@ from chess_coach.importers.lichess import get_recent_games as lichess_games
 from chess_coach.analysis.game_analyzer import analyze_pgn
 from chess_coach.coaching.templates import generate_explanation
 from chess_coach.database import init_db, save_game, game_exists, load_game, get_user_games
-from chess_coach.stats import get_user_stats, get_game_summary
+from chess_coach.stats import get_user_stats, get_game_summary, get_stats_for_games
 from chess_coach.puzzles import init_puzzles_table, extract_game_puzzles
 
 
@@ -43,7 +43,9 @@ def run_pipeline(username: str, max_games: int = 10, depth: int = 10,
         all_puzzles.extend(puzzles)
         records.append(record)
 
-    stats = get_user_stats(username)
+    # Calculate stats only for THIS session's games
+    game_ids = [r.game_id for r in records]
+    stats = get_stats_for_games(game_ids) if game_ids else {}
 
     return {
         "username": username,

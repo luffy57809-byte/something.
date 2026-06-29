@@ -92,3 +92,53 @@ def get_game_summary(game_id: str) -> dict:
         "white_errors": white_errors,
         "black_errors": black_errors,
     }
+
+
+def get_stats_for_games(game_ids: list) -> dict:
+    """Compute stats for a specific list of game IDs only."""
+    if not game_ids:
+        return {}
+
+    conn = get_connection()
+    c = conn.cursor()
+
+    placeholders = ','.join(['?' for _ in game_ids])
+    c.execute(f"""
+        SELECT m.classification, m.color, m.pattern_tags, m.eval_drop
+        FROM moves m
+        WHERE m.game_id IN ({placeholders})
+    """, game_ids)
+    rows = c.fetchall()
+    conn.close()
+
+    if not rows:
+        return {}
+
+    import json
+    total = len(rows)
+    blunders = sum(1 for r in rows if r["classification"] == "blunder")
+    mistakes = sum(1 for r in rows if r["classification"] == "mistake")
+    inaccuracies = sum(1 for r in rows if r["classification"] == "inaccuracy")
+    good = sum(1 for r in rows if r["classification"] == "good")
+    accuracy = round((good / total) * 100, 1) if total else 0
+    blunder_rate = round((blunders / total) * 100, 1) if total else 0
+
+    pattern_counts = {}
+    for r in rows:
+        tags = json.loads(r["pattern_tags"] or "[]")
+        for tag in tags:
+            pattern_counts[tag] = pattern_counts.get(tag, 0) + 1
+
+    top_pattern = max(pattern_counts, key=pattern_counts.get) if pattern_counts else None
+
+    return {
+        "total_moves": total,
+        "blunders": blunders,
+        "mistakes": mistakes,
+        "inaccuracies": inaccuracies,
+        "good_moves": good,
+        "accuracy_pct": accuracy,
+        "blunder_rate_pct": blunder_rate,
+        "pattern_counts": pattern_counts,
+        "top_weakness": top_pattern,
+    }
