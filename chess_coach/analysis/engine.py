@@ -1,20 +1,36 @@
 import chess
 import chess.engine
+import os
+import shutil
 
-STOCKFISH_PATH = "/usr/games/stockfish"
+def find_stockfish() -> str:
+    """Find stockfish binary - checks multiple locations."""
+    # Check local bin directory first (for Render)
+    local = os.path.join(os.path.dirname(__file__), "..", "..", "bin", "stockfish")
+    local = os.path.abspath(local)
+    if os.path.exists(local):
+        return local
+
+    # Check system path
+    system = shutil.which("stockfish")
+    if system:
+        return system
+
+    # Common locations
+    for path in ["/usr/games/stockfish", "/usr/bin/stockfish", "/usr/local/bin/stockfish"]:
+        if os.path.exists(path):
+            return path
+
+    raise FileNotFoundError("Stockfish not found. Please install it.")
 
 
 class ChessEngine:
-    def __init__(self, path: str = STOCKFISH_PATH, depth: int = 15):
-        self.engine = chess.engine.SimpleEngine.popen_uci(path)
+    def __init__(self, depth: int = 15):
+        self.path = find_stockfish()
+        self.engine = chess.engine.SimpleEngine.popen_uci(self.path)
         self.depth = depth
 
     def evaluate(self, board: chess.Board):
-        """
-        Returns a tuple: (eval_centipawns, best_move_san)
-        eval is from the perspective of the side to move.
-        Mate scores are converted to large centipawn values.
-        """
         info = self.engine.analyse(board, chess.engine.Limit(depth=self.depth))
         score = info["score"].pov(board.turn)
 
