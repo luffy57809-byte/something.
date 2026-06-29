@@ -40,3 +40,6 @@ export const getPuzzleStats = () =>
   API.get('/puzzles/stats');
 
 export default API;
+
+export const clearCache = (username) =>
+  API.delete(`/user/${username}/cache`);

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { analyzeGames, getUserGames, getUserStats } from '../api';
+import { analyzeGames, getUserGames, getUserStats, clearCache } from '../api';
 import { useAuth } from '../context/AuthContext';
 import './Dashboard.css';
 
@@ -24,6 +24,27 @@ export default function Dashboard() {
   const [games, setGames] = useState([]);
   const [analyzed, setAnalyzed] = useState(false);
   const [analyzedUsername, setAnalyzedUsername] = useState('');
+
+  const handleRefresh = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      await clearCache(chessUsername);
+      await analyzeGames(chessUsername, source, maxGames);
+      const [statsRes, gamesRes] = await Promise.all([
+        getUserStats(chessUsername),
+        getUserGames(chessUsername),
+      ]);
+      setStats(statsRes.data.stats);
+      setGames(gamesRes.data.games);
+      setAnalyzedUsername(chessUsername);
+      setAnalyzed(true);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Refresh failed');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleAnalyze = async (e) => {
     e.preventDefault();
@@ -89,6 +110,11 @@ export default function Dashboard() {
           <button className="btn btn-primary" type="submit" disabled={loading}>
             {loading ? 'Analyzing... (this may take a minute)' : 'Analyze Games'}
           </button>
+          {analyzed && (
+            <button className='btn btn-ghost' type='button' onClick={handleRefresh} disabled={loading} style={{marginTop: '0.5rem'}}>
+              🔄 Refresh (fetch latest games)
+            </button>
+          )}
         </form>
       </div>
 

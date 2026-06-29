@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Chessboard } from 'react-chessboard';
-import { Chess } from 'chess.js';
+import ChessBoard from '../components/ChessBoard';
 import { getTrainingPuzzles, submitAttempt, getPuzzleStats } from '../api';
 import './PuzzleTrainer.css';
 
@@ -11,10 +10,8 @@ export default function PuzzleTrainer() {
   const [lichessPuzzles, setLichessPuzzles] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentType, setCurrentType] = useState('game');
-  const [game, setGame] = useState(new Chess());
-  const [status, setStatus] = useState('');
-  const [solved, setSolved] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [currentFen, setCurrentFen] = useState(null);
+  const [moveStatus, setMoveStatus] = useState('');
   const [puzzleStats, setPuzzleStats] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -25,18 +22,15 @@ export default function PuzzleTrainer() {
 
   useEffect(() => {
     getPuzzleStats().then((res) => setPuzzleStats(res.data.puzzle_stats));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (currentPuzzle) {
-      const newGame = new Chess(currentPuzzle.fen || currentPuzzle.fen_before);
-      setGame(newGame);
-      setSolved(false);
-      setFailed(false);
-      setStatus('Find the best move!');
+      const fen = currentPuzzle.fen_before || currentPuzzle.fen;
+      if (fen) setCurrentFen(fen);
+      setMoveStatus('');
     }
-  }, [currentIndex, currentType, puzzles, lichessPuzzles]);
+  }, [currentIndex, currentType, currentPuzzle]);
 
   const handleLoad = async (e) => {
     e.preventDefault();
@@ -44,56 +38,39 @@ export default function PuzzleTrainer() {
     setError('');
     try {
       const res = await getTrainingPuzzles(chessUsername);
-      setPuzzles(res.data.game_puzzles || []);
-      setLichessPuzzles(res.data.lichess_puzzles || []);
+      const gamePuzzles = res.data.game_puzzles || [];
+      const lichess = res.data.lichess_puzzles || [];
+      setPuzzles(gamePuzzles);
+      setLichessPuzzles(lichess);
       setCurrentIndex(0);
-      setCurrentType('game');
+      setCurrentType(gamePuzzles.length > 0 ? 'game' : 'lichess');
       setSubmitted(true);
+      if (gamePuzzles.length === 0 && lichess.length === 0) {
+        setError('No puzzles found. Analyze your games on the Dashboard first.');
+        setSubmitted(false);
+      }
     } catch (err) {
-      setError('Failed to load puzzles');
+      setError('Failed to load puzzles. Analyze your games on the Dashboard first.');
     } finally {
       setLoading(false);
     }
   };
 
-  const onDrop = (sourceSquare, targetSquare) => {
-    if (solved || failed) return false;
-
-    const bestMove = currentPuzzle?.best_move || '';
-    const moveSan = `${sourceSquare}${targetSquare}`;
-
-    // Check if move matches best move (UCI format comparison)
-    const tempGame = new Chess(game.fen());
-    const move = tempGame.move({
-      from: sourceSquare,
-      to: targetSquare,
-      promotion: 'q',
-    });
-
-    if (!move) return false;
-
-    const isCorrect =
-      move.san === bestMove ||
-      moveSan === bestMove ||
-      move.lan === bestMove;
+  const onDrop = (from, to) => {
+    if (!currentPuzzle || moveStatus) return false;
+    const best = currentPuzzle.best_move || currentPuzzle.moves?.split(' ')[0] || '';
+    const move = `${from}${to}`;
+    const isCorrect = move === best || from + to === best;
 
     if (isCorrect) {
-      setGame(tempGame);
-      setSolved(true);
-      setStatus('✓ Correct! Well done.');
-      submitAttempt(
-        currentPuzzle.puzzle_id,
-        currentType,
-        true
-      ).then(() =>
-        getPuzzleStats().then((r) => setPuzzleStats(r.data.puzzle_stats))
-      );
+      setMoveStatus('correct');
+      submitAttempt(currentPuzzle.puzzle_id, currentType, true)
+        .then(() => getPuzzleStats()
+          .then((r) => setPuzzleStats(r.data.puzzle_stats)));
     } else {
-      setFailed(true);
-      setStatus(`✗ Not quite. The best move was ${bestMove}.`);
+      setMoveStatus('wrong');
       submitAttempt(currentPuzzle.puzzle_id, currentType, false);
     }
-
     return true;
   };
 
@@ -105,7 +82,15 @@ export default function PuzzleTrainer() {
       setCurrentType('lichess');
       setCurrentIndex(0);
     } else {
-      setStatus('All puzzles complete! Analyze more games to get new puzzles.');
+      setMoveStatus('done');
+    }
+  };
+
+  const resetPuzzle = () => {
+    if (currentPuzzle) {
+      const fen = currentPuzzle.fen_before || currentPuzzle.fen;
+      if (fen) setCurrentFen(fen);
+      setMoveStatus('');
     }
   };
 
@@ -118,7 +103,7 @@ export default function PuzzleTrainer() {
 
       {puzzleStats && (
         <div className="puzzle-stats-bar">
-          <span>Puzzles attempted: <strong>{puzzleStats.total_attempts}</strong></span>
+          <span>Attempted: <strong>{puzzleStats.total_attempts}</strong></span>
           <span>Solved: <strong>{puzzleStats.total_solved || 0}</strong></span>
           <span>Solve rate: <strong>{puzzleStats.solve_rate_pct}%</strong></span>
         </div>
@@ -161,7 +146,7 @@ export default function PuzzleTrainer() {
             </button>
           </div>
 
-          {currentPuzzle ? (
+          {currentPuzzle && currentFen ? (
             <div className="puzzle-body">
               <div className="puzzle-info">
                 {currentType === 'game' ? (
@@ -174,10 +159,11 @@ export default function PuzzleTrainer() {
                     </p>
                     {currentPuzzle.pattern_tags?.length > 0 && (
                       <p className="puzzle-pattern">
-                        Pattern: {currentPuzzle.pattern_tags.join(', ').replace(/_/g, ' ')}
+                        Pattern: {JSON.parse(typeof currentPuzzle.pattern_tags === 'string'
+                          ? currentPuzzle.pattern_tags : JSON.stringify(currentPuzzle.pattern_tags)
+                        ).join(', ').replace(/_/g, ' ')}
                       </p>
                     )}
-                    <p className="puzzle-instruction">{status}</p>
                   </>
                 ) : (
                   <>
@@ -187,37 +173,45 @@ export default function PuzzleTrainer() {
                     <p className="puzzle-pattern">
                       Theme: {currentPuzzle.pattern?.replace(/_/g, ' ')}
                     </p>
-                    <p className="puzzle-instruction">{status}</p>
                   </>
                 )}
+
+                <p className="puzzle-instruction">
+                  {moveStatus === '' && '🎯 Find the best move — drag a piece!'}
+                  {moveStatus === 'correct' && '✓ Correct! Well done.'}
+                  {moveStatus === 'wrong' && `✗ Not quite. Best was ${currentPuzzle.best_move || ''}`}
+                  {moveStatus === 'done' && 'All puzzles complete!'}
+                </p>
               </div>
 
-              <Chessboard
-                position={currentPuzzle.fen || currentPuzzle.fen_before || 'start'}
-                onPieceDrop={onDrop}
-                boardWidth={420}
-                customBoardStyle={{
-                  borderRadius: '8px',
-                  boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
-                }}
-                customDarkSquareStyle={{ backgroundColor: '#4a5568' }}
-                customLightSquareStyle={{ backgroundColor: '#e2e8f0' }}
+              <ChessBoard
+                key={currentFen}
+                fen={currentFen}
+                onDrop={onDrop}
+                draggable={!moveStatus}
               />
 
-              {(solved || failed) && (
+              {moveStatus && moveStatus !== 'done' && (
                 <div className="puzzle-feedback">
                   {currentType === 'game' && currentPuzzle.explanation && (
                     <p className="explanation-text">{currentPuzzle.explanation}</p>
                   )}
-                  <button className="btn btn-primary" onClick={nextPuzzle}>
-                    Next Puzzle →
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                    <button className="btn btn-ghost" onClick={resetPuzzle}>
+                      Try Again
+                    </button>
+                    <button className="btn btn-primary" onClick={nextPuzzle}>
+                      Next Puzzle →
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
           ) : (
             <div className="card">
-              <p>No puzzles available for this tab. Analyze more games first.</p>
+              <p style={{color: '#94a3b8'}}>
+                No puzzles available. Analyze more games on the Dashboard first.
+              </p>
             </div>
           )}
         </div>

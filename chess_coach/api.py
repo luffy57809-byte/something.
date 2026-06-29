@@ -199,3 +199,15 @@ def puzzle_stats(current_user: dict = Depends(get_current_user)):
     return {"username": current_user["username"], "puzzle_stats": stats}
 
 
+
+
+@app.delete("/user/{username}/cache")
+def clear_cache(username: str, current_user: dict = Depends(get_current_user)):
+    """Clear cached games for a chess username so they get re-analyzed."""
+    from chess_coach.database import get_connection
+    conn = get_connection()
+    conn.execute("DELETE FROM games WHERE username = ?", (username,))
+    conn.execute("DELETE FROM game_puzzles WHERE chess_username = ?", (username,))
+    conn.commit()
+    conn.close()
+    return {"cleared": True, "username": username}
