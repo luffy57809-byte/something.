@@ -124,10 +124,8 @@ def analyze(req: AnalyzeRequest, current_user: dict = Depends(get_current_user))
     max_games = req.max_games
     if max_games < 1:
         max_games = 1
-    if not current_user["is_premium"] and max_games > 5:
-        max_games = 5
-    if current_user["is_premium"] and max_games > 50:
-        max_games = 50
+    if max_games > 100:
+        max_games = 100
     try:
         result = run_pipeline(
             username=req.chess_username,

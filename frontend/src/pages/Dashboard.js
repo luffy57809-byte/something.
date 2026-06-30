@@ -25,7 +25,7 @@ export default function Dashboard() {
   const [analyzed, setAnalyzed] = useState(false);
   const [analyzedUsername, setAnalyzedUsername] = useState('');
 
-  const cap = user.is_premium ? 50 : 5;
+  const cap = 100;
 
   const handleRefresh = async () => {
     if (!chessUsername) return;
@@ -106,8 +106,7 @@ export default function Dashboard() {
                     key={n}
                     type="button"
                     className={`count-btn ${maxGames === n ? 'active' : ''}`}
-                    onClick={() => setMaxGames(Math.min(n, cap))}
-                    disabled={n > cap}
+                    onClick={() => setMaxGames(n)}
                   >
                     {n}
                   </button>
@@ -124,11 +123,9 @@ export default function Dashboard() {
                   }}
                 />
               </div>
-              {!user.is_premium && (
-                <p className="premium-hint">
-                  Free accounts limited to 5 games. Upgrade for up to 50.
-                </p>
-              )}
+              <p className="hint-text">
+                Analyzing many games may take a few minutes.
+              </p>
             </div>
           </div>
           {error && <p className="error">{error}</p>}
