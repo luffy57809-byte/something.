@@ -102,7 +102,7 @@ export default function Dashboard() {
                   <button
                     key={n}
                     type="button"
-                    className={\`count-btn \${maxGames === n ? 'active' : ''}\`}
+                    className={`count-btn ${maxGames === n ? 'active' : ''}`}
                     onClick={() => setMaxGames(n)}
                   >
                     {n}
