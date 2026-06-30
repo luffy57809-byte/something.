@@ -97,13 +97,30 @@ export default function Dashboard() {
             </div>
             <div className="form-group">
               <label>Games to analyze</label>
-              <select value={maxGames}
-                onChange={(e) => setMaxGames(Number(e.target.value))}>
-                <option value={3}>3 games</option>
-                <option value={5}>5 games</option>
-                {user.is_premium && <option value={10}>10 games</option>}
-                {user.is_premium && <option value={20}>20 games</option>}
-              </select>
+              <div className="game-count-options">
+                {[2, 5, 10, 20].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    className={\`count-btn \${maxGames === n ? 'active' : ''}\`}
+                    onClick={() => setMaxGames(n)}
+                  >
+                    {n}
+                  </button>
+                ))}
+                <input
+                  type="number"
+                  min={1}
+                  max={user.is_premium ? 50 : 5}
+                  placeholder="Custom"
+                  className="custom-count-input"
+                  onChange={(e) => setMaxGames(Number(e.target.value) || 1)}
+                />
+              </div>
+                <p className="premium-hint">
+                  Free accounts limited to 5 games. Upgrade for up to 50.
+                </p>
+              )}
             </div>
           </div>
           {error && <p className="error">{error}</p>}
