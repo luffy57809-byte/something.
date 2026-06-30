@@ -25,7 +25,10 @@ export default function Dashboard() {
   const [analyzed, setAnalyzed] = useState(false);
   const [analyzedUsername, setAnalyzedUsername] = useState('');
 
+  const cap = user.is_premium ? 50 : 5;
+
   const handleRefresh = async () => {
+    if (!chessUsername) return;
     setError('');
     setLoading(true);
     try {
@@ -103,7 +106,8 @@ export default function Dashboard() {
                     key={n}
                     type="button"
                     className={`count-btn ${maxGames === n ? 'active' : ''}`}
-                    onClick={() => setMaxGames(n)}
+                    onClick={() => setMaxGames(Math.min(n, cap))}
+                    disabled={n > cap}
                   >
                     {n}
                   </button>
@@ -111,12 +115,16 @@ export default function Dashboard() {
                 <input
                   type="number"
                   min={1}
-                  max={user.is_premium ? 50 : 5}
+                  max={cap}
                   placeholder="Custom"
                   className="custom-count-input"
-                  onChange={(e) => setMaxGames(Number(e.target.value) || 1)}
+                  onChange={(e) => {
+                    const val = Number(e.target.value) || 1;
+                    setMaxGames(Math.min(val, cap));
+                  }}
                 />
               </div>
+              {!user.is_premium && (
                 <p className="premium-hint">
                   Free accounts limited to 5 games. Upgrade for up to 50.
                 </p>
@@ -128,7 +136,13 @@ export default function Dashboard() {
             {loading ? 'Analyzing... (this may take a minute)' : 'Analyze Games'}
           </button>
           {analyzed && (
-            <button className='btn btn-ghost' type='button' onClick={handleRefresh} disabled={loading} style={{marginTop: '0.5rem'}}>
+            <button
+              className="btn btn-ghost"
+              type="button"
+              onClick={handleRefresh}
+              disabled={loading}
+              style={{ marginTop: '0.5rem' }}
+            >
               🔄 Refresh (fetch latest games)
             </button>
           )}
