@@ -22,6 +22,7 @@ export default function Navbar() {
           <>
             <Link to="/">Dashboard</Link>
             <Link to="/puzzles">Puzzles</Link>
+            <Link to="/detect">Cheat Detection</Link>
             <span className="navbar-user">{user.username}</span>
             <button className="btn btn-ghost" onClick={handleLogout}>Logout</button>
           </>

@@ -10,6 +10,7 @@ from chess_coach.auth import (
     init_users_table, create_user, authenticate_user,
     create_access_token, decode_token, get_user_by_username
 )
+from chess_coach.analysis.engine import find_stockfish
 from chess_coach.puzzles import (
     init_puzzles_table, get_training_puzzles,
     record_attempt, get_puzzle_stats
@@ -213,3 +214,91 @@ def clear_cache(username: str, current_user: dict = Depends(get_current_user)):
     conn.commit()
     conn.close()
     return {"cleared": True, "username": username}
+
+
+# --- Cheat Detection ---
+
+class DetectRequest(BaseModel):
+    chess_username: str
+    max_games: int = 5
+    source: str = "chesscom"
+
+
+@app.post("/detect")
+def detect_cheating(req: DetectRequest, current_user: dict = Depends(get_current_user)):
+    """Run cheat detection on a player's recent games."""
+    try:
+        import sys
+        sys.path.insert(0, '/opt/render/project/src')
+
+        from chess_detector.fetcher import get_chesscom_games
+        from chess_detector.core.analyzer import analyze_pgn as detect_analyze_pgn
+        from chess_detector.scorer import SuspicionScorer
+
+        scorer = SuspicionScorer()
+        reports = []
+
+        if req.source == "chesscom":
+            pgns = get_chesscom_games(req.chess_username, max_games=req.max_games)
+        else:
+            from chess_detector.fetcher import get_lichess_games
+            pgns = get_lichess_games(req.chess_username, max_games=req.max_games)
+
+        if not pgns:
+            raise HTTPException(status_code=404, detail="No games found for this user")
+
+        for pgn_text in pgns[:req.max_games]:
+            try:
+                analysis = detect_analyze_pgn(pgn_text, req.chess_username)
+                if analysis is None:
+                    continue
+                color = analysis.player_color
+                report = scorer.score(
+                    analysis,
+                    req.chess_username,
+                    color,
+                    pgn_text=pgn_text
+                )
+                reports.append({
+                    "game_id": report.game_id,
+                    "color": report.color,
+                    "overall_score": report.overall_score,
+                    "verdict": report.verdict,
+                    "features": [
+                        {
+                            "name": f.name,
+                            "score": f.score,
+                            "note": f.note,
+                            "weight": f.weight,
+                        }
+                        for f in report.features
+                    ],
+                    "flagged_moves": report.flagged_moves,
+                })
+            except Exception as e:
+                print(f"Skipping game: {e}")
+                continue
+
+        if not reports:
+            raise HTTPException(status_code=400, detail="Could not analyze any games")
+
+        avg_score = round(sum(r["overall_score"] for r in reports) / len(reports), 1)
+        if avg_score < 30:
+            overall_verdict = "clean"
+        elif avg_score < 60:
+            overall_verdict = "suspicious"
+        else:
+            overall_verdict = "likely cheating"
+
+        return {
+            "username": req.chess_username,
+            "games_analyzed": len(reports),
+            "average_score": avg_score,
+            "overall_verdict": overall_verdict,
+            "reports": reports,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

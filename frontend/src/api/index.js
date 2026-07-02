@@ -43,3 +43,6 @@ export default API;
 
 export const clearCache = (username) =>
   API.delete(`/user/${username}/cache`);
+
+export const detectCheating = (chess_username, max_games = 5, source = 'chesscom') =>
+  API.post('/detect', { chess_username, max_games, source });

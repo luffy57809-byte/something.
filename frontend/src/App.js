@@ -6,6 +6,7 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import GameReport from './pages/GameReport';
 import PuzzleTrainer from './pages/PuzzleTrainer';
+import CheatDetection from './pages/CheatDetection';
 import Navbar from './components/Navbar';
 import './App.css';
 
@@ -29,6 +30,9 @@ function App() {
             } />
             <Route path="/game/:gameId" element={
               <PrivateRoute><GameReport /></PrivateRoute>
+            } />
+            <Route path="/detect" element={
+              <PrivateRoute><CheatDetection /></PrivateRoute>
             } />
             <Route path="/puzzles" element={
               <PrivateRoute><PuzzleTrainer /></PrivateRoute>
