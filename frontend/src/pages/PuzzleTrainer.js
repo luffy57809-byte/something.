@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Chess } from 'chess.js';
 import ChessBoard from '../components/ChessBoard';
+import EvalBar from '../components/EvalBar';
 import { getTrainingPuzzles, submitAttempt, getPuzzleStats } from '../api';
 import './PuzzleTrainer.css';
 
@@ -12,6 +13,7 @@ export default function PuzzleTrainer() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentType, setCurrentType] = useState('game');
   const [currentFen, setCurrentFen] = useState(null);
+  const [evalScore, setEvalScore] = useState(0);
   const [moveStatus, setMoveStatus] = useState('');
   const [puzzleStats, setPuzzleStats] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -30,6 +32,7 @@ export default function PuzzleTrainer() {
       const fen = currentPuzzle.fen_before || currentPuzzle.fen;
       if (fen) setCurrentFen(fen);
       setMoveStatus('');
+      setEvalScore(0);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIndex, currentType]);
@@ -214,12 +217,15 @@ export default function PuzzleTrainer() {
                 </p>
               </div>
 
-              <ChessBoard
-                key={currentFen + currentIndex}
-                fen={currentFen}
-                onDrop={onDrop}
-                draggable={!moveStatus}
-              />
+              <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+                <EvalBar evalScore={evalScore} />
+                <ChessBoard
+                  key={currentFen + currentIndex}
+                  fen={currentFen}
+                  onDrop={onDrop}
+                  draggable={!moveStatus}
+                />
+              </div>
 
               {moveStatus && moveStatus !== 'done' && (
                 <div className="puzzle-feedback">

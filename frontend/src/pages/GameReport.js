@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import ChessBoard from '../components/ChessBoard';
 import { Chess } from 'chess.js';
 import { getGameReport } from '../api';
+import EvalBar from '../components/EvalBar';
 import './GameReport.css';
 
 export default function GameReport() {
@@ -14,6 +15,7 @@ export default function GameReport() {
   const [currentFen, setCurrentFen] = useState('start');
   const [mode, setMode] = useState('view');
   const [moveStatus, setMoveStatus] = useState('');
+  const [evalScore, setEvalScore] = useState(0);
   const fenRef = useRef('start');
 
   useEffect(() => {
