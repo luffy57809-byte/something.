@@ -32,7 +32,9 @@ export default function PuzzleTrainer() {
       const fen = currentPuzzle.fen_before || currentPuzzle.fen;
       if (fen) setCurrentFen(fen);
       setMoveStatus('');
-      setEvalScore(0);
+      // Set initial eval from puzzle data
+      const initEval = currentPuzzle?.eval_before || 0;
+      setEvalScore(initEval);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIndex, currentType]);
@@ -62,7 +64,29 @@ export default function PuzzleTrainer() {
   };
 
   const onDrop = (from, to) => {
-    if (!currentPuzzle || moveStatus) return false;
+    if (!currentPuzzle) return false;
+    // Allow free play after puzzle is done
+    if (moveStatus === 'freeplay' || moveStatus === 'correct' || moveStatus === 'wrong') {
+      const fen = currentFen;
+      if (!fen) return false;
+      const game = new Chess(fen);
+      try {
+        const result = game.move({ from, to, promotion: 'q' });
+        if (!result) return false;
+        const newFen = game.fen();
+        setCurrentFen(newFen);
+        const pieceValues = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+        let whiteMat = 0, blackMat = 0;
+        for (const ch of newFen.split(' ')[0]) {
+          if (ch in pieceValues) blackMat += pieceValues[ch];
+          else if (ch.toLowerCase() in pieceValues) whiteMat += pieceValues[ch.toLowerCase()];
+        }
+        setEvalScore((whiteMat - blackMat) * 100);
+        if (moveStatus !== 'freeplay') setMoveStatus('freeplay');
+        return true;
+      } catch { return false; }
+    }
+    if (moveStatus) return false;
 
     const fen = currentPuzzle.fen_before || currentPuzzle.fen;
     if (!fen) return false;
@@ -83,7 +107,17 @@ export default function PuzzleTrainer() {
     const isCorrect = moveSan === best || uciMove === best;
 
     // Update board to show the played move
-    setCurrentFen(game.fen());
+    const newFen = game.fen();
+    setCurrentFen(newFen);
+
+    // Rough eval update based on material
+    const pieceValues = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+    let whiteMat = 0, blackMat = 0;
+    for (const ch of newFen.split(' ')[0]) {
+      if (ch in pieceValues) blackMat += pieceValues[ch];
+      else if (ch.toLowerCase() in pieceValues) whiteMat += pieceValues[ch.toLowerCase()];
+    }
+    setEvalScore((whiteMat - blackMat) * 100);
 
     if (isCorrect) {
       setMoveStatus('correct');
@@ -223,9 +257,23 @@ export default function PuzzleTrainer() {
                   key={currentFen + currentIndex}
                   fen={currentFen}
                   onDrop={onDrop}
-                  draggable={!moveStatus}
+                  draggable={!moveStatus || moveStatus === 'correct' || moveStatus === 'wrong' || moveStatus === 'freeplay'}
                 />
               </div>
+              {(moveStatus === 'correct' || moveStatus === 'wrong') && (
+                <button
+                  className="btn btn-ghost"
+                  style={{ marginTop: '0.5rem' }}
+                  onClick={() => setMoveStatus('freeplay')}
+                >
+                  🔓 Continue exploring position
+                </button>
+              )}
+              {moveStatus === 'freeplay' && (
+                <p style={{ color: '#7c9ef8', fontSize: '0.9rem', marginTop: '0.5rem' }}>
+                  🔓 Free play mode — explore any moves you like!
+                </p>
+              )}
 
               {moveStatus && moveStatus !== 'done' && (
                 <div className="puzzle-feedback">
