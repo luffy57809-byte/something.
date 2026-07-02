@@ -29,7 +29,7 @@ export default function Login() {
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <h1>♟ ChessMentor</h1>
+        <h1>♟ Chesslytic</h1>
         <p className="auth-subtitle">Sign in to your account</p>
         <form onSubmit={handleSubmit}>
           <div className="form-group">

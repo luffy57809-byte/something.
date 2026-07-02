@@ -15,7 +15,7 @@ export default function Navbar() {
   return (
     <nav className="navbar">
       <div className="navbar-brand">
-        <Link to="/">♟ ChessMentor</Link>
+        <Link to="/">♟ Chesslytic</Link>
       </div>
       <div className="navbar-links">
         {user ? (
