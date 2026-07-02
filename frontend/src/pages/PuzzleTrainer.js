@@ -76,9 +76,11 @@ export default function PuzzleTrainer() {
     }
 
     const best = currentPuzzle.best_move || '';
+    const uciMove = from + to;
+    const isCorrect = moveSan === best || uciMove === best;
 
-    // Compare SAN to SAN
-    const isCorrect = moveSan === best;
+    // Update board to show the played move
+    setCurrentFen(game.fen());
 
     if (isCorrect) {
       setMoveStatus('correct');
