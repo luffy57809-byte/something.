@@ -228,7 +228,7 @@ export default function GameReport() {
             </>
           ) : (
             <div className="card">
-              <p style={{color: '#94a3b8'}}>
+              <p style={{color: '#a9b5a6'}}>
                 Click a move on the left to see the position.
               </p>
             </div>

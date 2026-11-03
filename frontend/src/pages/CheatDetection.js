@@ -4,9 +4,9 @@ import { detectCheating } from '../api';
 import './CheatDetection.css';
 
 const VERDICT_CONFIG = {
-  'clean': { color: '#22c55e', emoji: '✅', label: 'Clean' },
-  'suspicious': { color: '#f97316', emoji: '⚠️', label: 'Suspicious' },
-  'likely cheating': { color: '#ef4444', emoji: '🚨', label: 'Likely Cheating' },
+  'clean': { color: '#7fc98f', emoji: '✅', label: 'Clean' },
+  'suspicious': { color: '#f0a04b', emoji: '⚠️', label: 'Suspicious' },
+  'likely cheating': { color: '#f0766b', emoji: '🚨', label: 'Likely Cheating' },
 };
 
 export default function CheatDetection() {
@@ -156,8 +156,8 @@ export default function CheatDetection() {
                                     className="feature-score-fill"
                                     style={{
                                       width: `${f.score}%`,
-                                      background: f.score > 60 ? '#ef4444'
-                                        : f.score > 30 ? '#f97316' : '#22c55e'
+                                      background: f.score > 60 ? '#f0766b'
+                                        : f.score > 30 ? '#f0a04b' : '#7fc98f'
                                     }}
                                   />
                                   <span>{f.score.toFixed(1)}</span>
