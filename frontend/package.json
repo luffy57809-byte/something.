@@ -40,5 +40,5 @@
       "last 1 safari version"
     ]
   },
-  "proxy": "https://didactic-robot-96756qr6579g2pgv7-8000.app.github.dev"
+  "proxy": "http://localhost:8000"
 }
