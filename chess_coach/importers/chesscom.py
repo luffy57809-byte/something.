@@ -19,19 +19,15 @@ def get_games_from_archive(archive_url: str) -> list[dict]:
 
 
 def get_recent_games(username: str, max_games: int = 10) -> list[dict]:
-    """Get the most recent games from the latest archive only."""
+    # Walk back through monthly archives (newest first) until we have enough games
     archives = get_archives(username)
-    if not archives:
-        return []
+    games = []
+    for archive_url in list(reversed(archives))[:6]:
+        month_games = get_games_from_archive(archive_url)
+        games.extend(g for g in month_games if g.get("rules", "chess") == "chess")
+        if len(games) >= max_games:
+            break
 
-    # Only use the most recent archive
-    latest_archive = archives[-1]
-    games = get_games_from_archive(latest_archive)
-
-    # Sort by end_time descending — newest first
+    # Newest first
     games.sort(key=lambda g: g.get("end_time", 0), reverse=True)
-
-    # Filter to standard chess only
-    games = [g for g in games if g.get("rules", "chess") == "chess"]
-
     return games[:max_games]

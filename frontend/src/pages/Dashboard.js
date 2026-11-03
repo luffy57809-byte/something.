@@ -39,7 +39,7 @@ export default function Dashboard() {
         getUserGames(chessUsername),
       ]);
       setStats(statsRes.data.stats);
-      setGames(gamesRes.data.games);
+      setGames(gamesRes.data.games.slice(0, Number(maxGames) || 5));
       setAnalyzedUsername(chessUsername);
       setAnalyzed(true);
     } catch (err) {
@@ -60,7 +60,7 @@ export default function Dashboard() {
         getUserGames(chessUsername),
       ]);
       setStats(statsRes.data.stats);
-      setGames(gamesRes.data.games);
+      setGames(gamesRes.data.games.slice(0, Number(maxGames) || 5));
       setAnalyzedUsername(chessUsername);
       setAnalyzed(true);
     } catch (err) {
