@@ -83,7 +83,7 @@ export default function ChessBoard({ fen, onDrop, draggable }) {
     setDragOver(null);
   };
 
-  if (!board.length) return <div style={{color:'#94a3b8'}}>Loading board...</div>;
+  if (!board.length) return <div style={{color:'#a9b5a6'}}>Loading board...</div>;
 
   return (
     <div style={{ userSelect: 'none' }}>
@@ -93,7 +93,7 @@ export default function ChessBoard({ fen, onDrop, draggable }) {
             <div key={n} style={{
               width: 20, height: 52,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: '#94a3b8', fontSize: '0.75rem'
+              color: '#a9b5a6', fontSize: '0.75rem'
             }}>{n}</div>
           ))}
         </div>
@@ -102,7 +102,7 @@ export default function ChessBoard({ fen, onDrop, draggable }) {
             display: 'grid',
             gridTemplateColumns: 'repeat(8, 52px)',
             gridTemplateRows: 'repeat(8, 52px)',
-            border: '2px solid #4a5568',
+            border: '3px solid #7a4f35',
             borderRadius: '4px',
             overflow: 'hidden',
           }}>
@@ -121,9 +121,9 @@ export default function ChessBoard({ fen, onDrop, draggable }) {
                     onDrop={(e) => handleDrop(e, rankIdx, fileIdx)}
                     style={{
                       width: 52, height: 52,
-                      background: isDragSource ? '#f6f669'
-                        : isDragTarget ? '#baca2b'
-                        : isLight ? '#e2e8f0' : '#4a5568',
+                      background: isDragSource ? '#d3a548'
+                        : isDragTarget ? '#e3c77a'
+                        : isLight ? '#ecdcb8' : '#7a4f35',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -159,7 +159,7 @@ export default function ChessBoard({ fen, onDrop, draggable }) {
             {['a','b','c','d','e','f','g','h'].map(f => (
               <div key={f} style={{
                 width: 52, textAlign: 'center',
-                color: '#94a3b8', fontSize: '0.75rem'
+                color: '#a9b5a6', fontSize: '0.75rem'
               }}>{f}</div>
             ))}
           </div>

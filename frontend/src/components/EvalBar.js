@@ -33,7 +33,7 @@ export default function EvalBar({ evalScore, color = 'white' }) {
         height: '416px',
         borderRadius: '4px',
         overflow: 'hidden',
-        border: '1px solid #4a5568',
+        border: '1px solid #7a4f35',
         position: 'relative',
         display: 'flex',
         flexDirection: 'column',
@@ -42,14 +42,14 @@ export default function EvalBar({ evalScore, color = 'white' }) {
         <div style={{
           width: '100%',
           height: `${100 - whitePercent}%`,
-          background: '#1a1a1a',
+          background: '#2b1d14',
           transition: 'height 0.5s ease',
         }} />
         {/* White's portion (bottom) */}
         <div style={{
           width: '100%',
           height: `${whitePercent}%`,
-          background: '#f0f0f0',
+          background: '#ecdcb8',
           transition: 'height 0.5s ease',
         }} />
         {/* Center line */}
@@ -59,12 +59,12 @@ export default function EvalBar({ evalScore, color = 'white' }) {
           left: 0,
           right: 0,
           height: '1px',
-          background: '#4a5568',
+          background: '#d3a548',
         }} />
       </div>
       <div style={{
         fontSize: '0.7rem',
-        color: cp >= 0 ? '#e2e8f0' : '#94a3b8',
+        color: cp >= 0 ? '#ece6d6' : '#a9b5a6',
         fontWeight: '600',
         fontFamily: 'monospace',
       }}>
