@@ -69,7 +69,7 @@ def save_game(record: GameRecord, username: str):
                     :time_control, :date, 1)
             ON CONFLICT (game_id) DO UPDATE SET analyzed = 1
         """), {
-            "game_id": record.game_id, "username": username,
+            "game_id": record.game_id, "username": username.lower(),
             "pgn": record.pgn, "white": record.white,
             "black": record.black, "result": record.result,
             "time_control": record.time_control, "date": record.date
@@ -165,7 +165,7 @@ def get_user_games(username: str) -> list[dict]:
             SELECT game_id, white, black, result, date, time_control
             FROM games WHERE username = :username
             ORDER BY date DESC
-        """), {"username": username}).fetchall()
+        """), {"username": username.lower()}).fetchall()
 
     return [
         {

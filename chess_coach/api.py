@@ -152,7 +152,7 @@ def analyze(req: AnalyzeRequest, current_user: dict = Depends(get_current_user))
 
 @app.get("/user/{username}/stats")
 def user_stats(username: str, current_user: dict = Depends(get_current_user)):
-    stats = get_user_stats(username)
+    stats = get_user_stats(username.lower())
     if not stats:
         raise HTTPException(status_code=404,
                             detail="No analyzed games found for this user")
@@ -161,7 +161,7 @@ def user_stats(username: str, current_user: dict = Depends(get_current_user)):
 
 @app.get("/user/{username}/games")
 def user_games(username: str, current_user: dict = Depends(get_current_user)):
-    games = get_user_games(username)
+    games = get_user_games(username.lower())
     if not games:
         raise HTTPException(status_code=404,
                             detail="No games found for this user")
@@ -181,7 +181,7 @@ def game_report(game_id: str, current_user: dict = Depends(get_current_user)):
 def training_puzzles(chess_username: str,
                      current_user: dict = Depends(get_current_user)):
     puzzles = get_training_puzzles(
-        chess_username=chess_username,
+        chess_username=chess_username.lower(),
         app_username=current_user["username"],
         limit=5
     )
@@ -211,6 +211,7 @@ def puzzle_stats(current_user: dict = Depends(get_current_user)):
 @app.delete("/user/{username}/cache")
 def clear_cache(username: str, current_user: dict = Depends(get_current_user)):
     """Clear cached games for a chess username so they get re-analyzed."""
+    username = username.lower()
     from chess_coach.database import get_connection
     conn = get_connection()
     from sqlalchemy import text as _sql_text

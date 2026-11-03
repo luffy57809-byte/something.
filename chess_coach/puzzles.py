@@ -82,7 +82,7 @@ def extract_game_puzzles(record, chess_username: str) -> list[dict]:
             """), {
                 "puzzle_id": puzzle_id,
                 "game_id": record.game_id,
-                "chess_username": chess_username,
+                "chess_username": chess_username.lower(),
                 "move_number": m.move_number,
                 "color": m.color,
                 "fen": m.fen_before,
