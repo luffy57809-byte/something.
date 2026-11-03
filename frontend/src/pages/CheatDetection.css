@@ -1,22 +1,11 @@
-.detection-header {
-  margin-bottom: 1.5rem;
-}
-
-.detection-header h1 {
-  font-size: 1.8rem;
-  color: #e2e8f0;
-}
-
-.detection-header p {
-  color: #94a3b8;
-  margin-top: 0.3rem;
-  max-width: 600px;
-}
+.detection-header { margin-bottom: 1.5rem; }
+.detection-header p { color: var(--muted); margin-top: 0.3rem; max-width: 600px; }
 
 .verdict-card {
-  background: #1e2130;
-  border: 2px solid #2d3148;
-  border-radius: 12px;
+  background: var(--table);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--walnut);
+  border-radius: 6px;
   padding: 1.5rem;
   margin-bottom: 1.5rem;
   display: flex;
@@ -24,53 +13,16 @@
   gap: 1.5rem;
   flex-wrap: wrap;
 }
+.verdict-emoji { font-size: 3rem; }
+.verdict-info { flex: 1; }
+.verdict-label { font-family: var(--font-display); font-size: 1.5rem; }
+.verdict-username { color: var(--text); font-size: 1.1rem; margin-top: 0.2rem; }
+.verdict-detail { color: var(--muted); font-size: 0.9rem; margin-top: 0.3rem; }
 
-.verdict-emoji {
-  font-size: 3rem;
-}
+.verdict-score-bar { width: 100%; height: 8px; background: var(--felt); border-radius: 4px; margin-top: 0.75rem; overflow: hidden; }
+.verdict-score-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
 
-.verdict-info {
-  flex: 1;
-}
-
-.verdict-label {
-  font-size: 1.4rem;
-  font-weight: 700;
-}
-
-.verdict-username {
-  color: #e2e8f0;
-  font-size: 1.1rem;
-  margin-top: 0.2rem;
-}
-
-.verdict-detail {
-  color: #94a3b8;
-  font-size: 0.9rem;
-  margin-top: 0.3rem;
-}
-
-.verdict-score-bar {
-  width: 100%;
-  height: 8px;
-  background: #2d3148;
-  border-radius: 4px;
-  margin-top: 0.75rem;
-  overflow: hidden;
-}
-
-.verdict-score-fill {
-  height: 100%;
-  border-radius: 4px;
-  transition: width 0.5s ease;
-}
-
-.game-report-row {
-  border: 1px solid #2d3148;
-  border-radius: 8px;
-  margin-bottom: 0.75rem;
-  overflow: hidden;
-}
+.game-report-row { border: 1px solid var(--line); border-radius: 6px; margin-bottom: 0.75rem; overflow: hidden; }
 
 .game-report-header {
   display: flex;
@@ -78,70 +30,27 @@
   gap: 1rem;
   padding: 0.75rem 1rem;
   cursor: pointer;
-  background: #0f1117;
-  transition: background 0.2s;
+  background: var(--felt);
+  transition: background-color 0.15s;
   flex-wrap: wrap;
 }
+.game-report-header:hover { background: var(--table-raised); }
 
-.game-report-header:hover {
-  background: #161926;
-}
-
-.game-report-id { font-weight: 600; color: #e2e8f0; }
-.game-report-color { color: #94a3b8; font-size: 0.9rem; }
-.game-report-score { color: #94a3b8; font-size: 0.9rem; }
+.game-report-id { font-weight: 600; color: var(--text); }
+.game-report-color { color: var(--muted); font-size: 0.9rem; }
+.game-report-score { color: var(--muted); font-size: 0.9rem; }
 .game-report-verdict { font-weight: 600; }
-.expand-icon { margin-left: auto; color: #94a3b8; }
+.expand-icon { margin-left: auto; color: var(--muted); }
 
-.game-report-details {
-  padding: 1rem;
-  background: #1e2130;
-}
+.game-report-details { padding: 1rem; background: var(--table); overflow-x: auto; }
 
-.features-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.85rem;
-}
+.features-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.features-table th { text-align: left; color: var(--muted); padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--line); font-weight: 500; }
+.features-table td { padding: 0.5rem; color: var(--text); vertical-align: middle; }
 
-.features-table th {
-  text-align: left;
-  color: #94a3b8;
-  padding: 0.4rem 0.5rem;
-  border-bottom: 1px solid #2d3148;
-}
+.feature-score-bar { display: flex; align-items: center; gap: 0.5rem; }
+.feature-score-bar > div { height: 8px; border-radius: 4px; flex: 1; max-width: 120px; }
+.feature-score-fill { height: 100%; border-radius: 4px; }
+.feature-note { color: var(--muted); font-size: 0.8rem; }
 
-.features-table td {
-  padding: 0.5rem;
-  color: #e2e8f0;
-  vertical-align: middle;
-}
-
-.feature-score-bar {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.feature-score-bar > div {
-  height: 8px;
-  border-radius: 4px;
-  flex: 1;
-  max-width: 120px;
-}
-
-.feature-score-fill {
-  height: 100%;
-  border-radius: 4px;
-}
-
-.feature-note {
-  color: #94a3b8;
-  font-size: 0.8rem;
-}
-
-.flagged-moves {
-  margin-top: 0.75rem;
-  color: #f97316;
-  font-size: 0.85rem;
-}
+.flagged-moves { margin-top: 0.75rem; color: var(--mistake); font-size: 0.85rem; }
