@@ -270,7 +270,7 @@ export default function PuzzleTrainer() {
                 </button>
               )}
               {moveStatus === 'freeplay' && (
-                <p style={{ color: '#7c9ef8', fontSize: '0.9rem', marginTop: '0.5rem' }}>
+                <p style={{ color: 'var(--brass)', fontSize: '0.9rem', marginTop: '0.5rem' }}>
                   🔓 Free play mode — explore any moves you like!
                 </p>
               )}
@@ -293,7 +293,7 @@ export default function PuzzleTrainer() {
             </div>
           ) : (
             <div className="card">
-              <p style={{color: '#94a3b8'}}>
+              <p style={{color: 'var(--muted)'}}>
                 No puzzles available. Analyze more games on the Dashboard first.
               </p>
             </div>
