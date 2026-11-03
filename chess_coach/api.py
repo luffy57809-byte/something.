@@ -1,3 +1,4 @@
+import re
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -82,7 +83,10 @@ def register(req: RegisterRequest):
         raise HTTPException(status_code=400,
                             detail="Password must be between 8 and 72 characters")
     try:
-        user = create_user(req.username, req.email, req.password)
+        email = req.email.strip().lower()
+        if len(email) > 254 or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]{2,}", email):
+            raise HTTPException(status_code=400, detail="Enter a valid email address")
+        user = create_user(req.username, email, req.password)
         token = create_access_token({"sub": user["username"]})
         return {"access_token": token, "token_type": "bearer", "user": user}
     except ValueError as e:
