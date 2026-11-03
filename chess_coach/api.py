@@ -209,7 +209,10 @@ def clear_cache(username: str, current_user: dict = Depends(get_current_user)):
     """Clear cached games for a chess username so they get re-analyzed."""
     from chess_coach.database import get_connection
     conn = get_connection()
-    conn.execute("DELETE FROM games WHERE username = ?", (username,))
+    from sqlalchemy import text as _sql_text
+    conn.execute(_sql_text("DELETE FROM moves WHERE game_id IN (SELECT game_id FROM games WHERE username = :u)"), {"u": username})
+    conn.execute(_sql_text("DELETE FROM games WHERE username = :u"), {"u": username})
+    conn.commit()
     conn.execute("DELETE FROM game_puzzles WHERE chess_username = ?", (username,))
     conn.commit()
     conn.close()
