@@ -4,9 +4,9 @@ import { detectCheating } from '../api';
 import './CheatDetection.css';
 
 const VERDICT_CONFIG = {
-  'clean': { color: '#7fc98f', emoji: '✅', label: 'Clean' },
-  'suspicious': { color: '#f0a04b', emoji: '⚠️', label: 'Suspicious' },
-  'likely cheating': { color: '#f0766b', emoji: '🚨', label: 'Likely Cheating' },
+  'clean': { color: '#7fc98f', emoji: '✅', label: 'No unusual patterns' },
+  'suspicious': { color: '#f0a04b', emoji: '⚠️', label: 'Some unusual patterns' },
+  'likely cheating': { color: '#f0766b', emoji: '🚨', label: 'Highly unusual play' },
 };
 
 export default function CheatDetection() {
