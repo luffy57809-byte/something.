@@ -29,38 +29,40 @@ def get_user_stats(username: str) -> dict:
 
 
 def get_game_summary(game_id: str) -> dict:
+    """Summary for the user's side of the game, with the opponent's numbers alongside."""
     with engine.connect() as conn:
-        rows = conn.execute(text("""
-            SELECT classification, color, pattern_tags, eval_drop
-            FROM moves WHERE game_id = :game_id
-        """), {"game_id": game_id}).fetchall()
+        game = conn.execute(
+            text("SELECT username, white, black FROM games WHERE game_id = :g"),
+            {"g": game_id}
+        ).fetchone()
+        rows = conn.execute(text(f"""
+            SELECT {_COLS} FROM moves m WHERE m.game_id = :g ORDER BY m.id
+        """), {"g": game_id}).fetchall()
 
     if not rows:
         return {}
 
-    total = len(rows)
-    blunders = sum(1 for r in rows if r[0] == "blunder")
-    mistakes = sum(1 for r in rows if r[0] == "mistake")
-    inaccuracies = sum(1 for r in rows if r[0] == "inaccuracy")
-    good = sum(1 for r in rows if r[0] == "good")
-    accuracy = round((good / total) * 100, 1) if total else 0
+    my_color = None
+    if game:
+        me = (game[0] or "").lower()
+        if (game[1] or "").lower() == me:
+            my_color = "white"
+        elif (game[2] or "").lower() == me:
+            my_color = "black"
 
-    white_errors = sum(1 for r in rows
-                       if r[1] == "white"
-                       and r[0] in ("blunder", "mistake"))
-    black_errors = sum(1 for r in rows
-                       if r[1] == "black"
-                       and r[0] in ("blunder", "mistake"))
+    mine = [r for r in rows if r[1] == my_color] if my_color else rows
+    summary = _compute_stats(mine)
 
-    return {
-        "total_moves": total,
-        "blunders": blunders,
-        "mistakes": mistakes,
-        "inaccuracies": inaccuracies,
-        "accuracy_pct": accuracy,
-        "white_errors": white_errors,
-        "black_errors": black_errors,
-    }
+    if my_color:
+        theirs = [r for r in rows if r[1] != my_color]
+        if theirs:
+            opp = _compute_stats(theirs)
+            summary["opponent"] = {k: opp[k] for k in
+                                   ("accuracy_pct", "blunders", "mistakes", "inaccuracies")}
+    summary["player_color"] = my_color
+    summary["white_errors"] = sum(1 for r in rows if r[1] == "white" and r[0] in ("blunder", "mistake"))
+    summary["black_errors"] = sum(1 for r in rows if r[1] == "black" and r[0] in ("blunder", "mistake"))
+    return summary
 
 
 def get_stats_for_games(game_ids: list, username: str = None) -> dict:
