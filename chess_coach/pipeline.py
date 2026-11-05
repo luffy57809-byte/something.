@@ -45,7 +45,7 @@ def run_pipeline(username: str, max_games: int = 10, depth: int = 12,
 
     # Calculate stats only for THIS session's games
     game_ids = [r.game_id for r in records]
-    stats = get_stats_for_games(game_ids) if game_ids else {}
+    stats = get_stats_for_games(game_ids, username) if game_ids else {}
 
     return {
         "username": username,

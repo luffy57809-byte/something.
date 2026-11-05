@@ -1,37 +1,38 @@
 import chess
-import json
+
+PIECE_VALUES = {
+    chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3,
+    chess.ROOK: 5, chess.QUEEN: 9, chess.KING: 100,
+}
+
+
+def _cheapest_attacker_value(board, color, square) -> int:
+    return min(PIECE_VALUES[board.piece_type_at(s)] for s in board.attackers(color, square))
 
 
 def detect_hanging_piece(fen_after: str, mover_color: str) -> bool:
-    """Check if the player who just moved left a piece hanging."""
+    """True if the mover left a piece (not a pawn) that the opponent can win material from."""
     board = chess.Board(fen_after)
-    mover_is_white = (mover_color == "white")
-    opponent_color = chess.BLACK if mover_is_white else chess.WHITE
+    color = (mover_color == "white")
+    enemy = not color
 
     for square in chess.SQUARES:
         piece = board.piece_at(square)
-        if piece is None:
+        if piece is None or piece.color != color:
             continue
-        if piece.color != mover_is_white:
+        if piece.piece_type in (chess.PAWN, chess.KING):
             continue
-
-        attackers = board.attackers(opponent_color, square)
-        if not attackers:
+        if not board.attackers(enemy, square):
             continue
-
-        defenders = board.attackers(mover_is_white, square)
-
-        if not defenders:
-            return True
-
-        if len(attackers) > len(defenders):
-            return True
-
+        if not board.attackers(color, square):
+            return True  # attacked and undefended
+        if _cheapest_attacker_value(board, enemy, square) < PIECE_VALUES[piece.piece_type]:
+            return True  # attacked by a cheaper piece
     return False
 
 
 def detect_missed_fork(fen_before: str, best_move_san: str, mover_color: str) -> bool:
-    """Check if the engine's best move creates a fork."""
+    """True if the engine's best move forks two enemy targets and the forking piece is safe."""
     if not best_move_san:
         return False
 
@@ -41,25 +42,51 @@ def detect_missed_fork(fen_before: str, best_move_san: str, mover_color: str) ->
     except ValueError:
         return False
 
+    mover = board.turn
+    enemy = not mover
     board.push(move)
-    moved_piece_square = move.to_square
-    opponent_color = not board.turn
 
-    attacked_pieces = 0
-    for square in board.attacks(moved_piece_square):
-        target = board.piece_at(square)
-        if target and target.color == opponent_color:
-            if target.piece_type != chess.PAWN:
-                attacked_pieces += 1
+    to_sq = move.to_square
+    forker_value = PIECE_VALUES[board.piece_type_at(to_sq)]
 
-    return attacked_pieces >= 2
+    # the forking piece must not just be lost for free
+    if board.attackers(enemy, to_sq):
+        if not board.attackers(mover, to_sq):
+            return False
+        if _cheapest_attacker_value(board, enemy, to_sq) < forker_value:
+            return False
+
+    targets = 0
+    for sq in board.attacks(to_sq):
+        target = board.piece_at(sq)
+        if target is None or target.color != enemy or target.piece_type == chess.PAWN:
+            continue
+        if target.piece_type == chess.KING:
+            targets += 1  # a check counts
+            continue
+        undefended = not board.attackers(enemy, sq)
+        worth_more = PIECE_VALUES[target.piece_type] > forker_value
+        if undefended or worth_more:
+            targets += 1
+
+    return targets >= 2
+
+
+def _pinned_squares(board, color):
+    pinned = set()
+    for sq in chess.SQUARES:
+        piece = board.piece_at(sq)
+        if piece is None or piece.color != color:
+            continue
+        if piece.piece_type in (chess.KING, chess.PAWN):
+            continue
+        if board.is_pinned(color, sq):
+            pinned.add(sq)
+    return pinned
 
 
 def detect_missed_pin(fen_before: str, best_move_san: str, mover_color: str) -> bool:
-    """
-    Check if the engine's best move creates a pin —
-    a piece attacked that cannot move without exposing a more valuable piece.
-    """
+    """True if the engine's best move creates a NEW pin against the opponent."""
     if not best_move_san:
         return False
 
@@ -69,51 +96,41 @@ def detect_missed_pin(fen_before: str, best_move_san: str, mover_color: str) -> 
     except ValueError:
         return False
 
+    enemy = not board.turn
+    pins_before = _pinned_squares(board, enemy)
     board.push(move)
-    opponent_color = board.turn  # now it's opponent's turn
-
-    # Check if any opponent piece is now pinned
-    for square in chess.SQUARES:
-        piece = board.piece_at(square)
-        if piece is None or piece.color != opponent_color:
-            continue
-        if board.is_pinned(opponent_color, square):
-            return True
-
-    return False
+    pins_after = _pinned_squares(board, enemy)
+    return bool(pins_after - pins_before)
 
 
 def detect_back_rank_weakness(fen_after: str, mover_color: str) -> bool:
-    """
-    Check if the player who just moved has a back rank weakness —
-    king trapped on back rank with no escape squares.
-    """
+    """King on its back rank, every square in front blocked or covered, enemy has a rook/queen."""
     board = chess.Board(fen_after)
-    mover_is_white = (mover_color == "white")
+    color = (mover_color == "white")
+    enemy = not color
 
-    king_square = board.king(mover_is_white)
-    if king_square is None:
+    king_sq = board.king(color)
+    if king_sq is None:
         return False
 
-    back_rank = chess.BB_RANK_1 if mover_is_white else chess.BB_RANK_8
-    if not (chess.BB_SQUARES[king_square] & back_rank):
-        return False  # king not on back rank
+    king_rank = chess.square_rank(king_sq)
+    if king_rank != (0 if color else 7):
+        return False
 
-    # Check if king has friendly pawns blocking all escape squares
-    king_rank = chess.square_rank(king_square)
-    king_file = chess.square_file(king_square)
+    if not (board.pieces(chess.ROOK, enemy) or board.pieces(chess.QUEEN, enemy)):
+        return False
 
-    escape_squares = 0
+    forward_rank = king_rank + (1 if color else -1)
+    king_file = chess.square_file(king_sq)
     for f in range(max(0, king_file - 1), min(8, king_file + 2)):
-        forward_rank = king_rank + (1 if mover_is_white else -1)
-        if 0 <= forward_rank <= 7:
-            sq = chess.square(f, forward_rank)
-            piece = board.piece_at(sq)
-            if piece and piece.color == mover_is_white and piece.piece_type == chess.PAWN:
-                escape_squares += 1
-
-    # If all three forward squares blocked by own pawns, back rank is weak
-    return escape_squares >= 2
+        sq = chess.square(f, forward_rank)
+        piece = board.piece_at(sq)
+        if piece and piece.color == color:
+            continue  # blocked by our own piece
+        if board.is_attacked_by(enemy, sq):
+            continue  # covered by the enemy
+        return False  # the king has a way out
+    return True
 
 
 def tag_patterns(move_analysis, fen_before: str) -> list[str]:
@@ -130,7 +147,9 @@ def tag_patterns(move_analysis, fen_before: str) -> list[str]:
         if detect_missed_pin(fen_before, move_analysis.best_move_san, move_analysis.color):
             tags.append("missed_pin")
 
-        if detect_back_rank_weakness(move_analysis.fen_after, move_analysis.color):
+        # only when the move actually allowed a forced mate
+        if (move_analysis.eval_after is not None and move_analysis.eval_after <= -9000
+                and detect_back_rank_weakness(move_analysis.fen_after, move_analysis.color)):
             tags.append("back_rank_weakness")
 
     return tags

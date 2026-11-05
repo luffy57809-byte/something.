@@ -30,6 +30,14 @@ CLASSIFICATION_INTROS = {
 }
 
 
+def _fmt_eval(cp):
+    if cp is None:
+        return "?"
+    if abs(cp) >= 9000:
+        return "mate for you" if cp > 0 else "mate against you"
+    return f"{cp / 100:+.1f}"
+
+
 def generate_explanation(move_analysis) -> str:
     """Generate a template-based explanation for a flagged move."""
     parts = []
@@ -42,6 +50,13 @@ def generate_explanation(move_analysis) -> str:
         explanation = PATTERN_EXPLANATIONS.get(tag)
         if explanation:
             parts.append(explanation)
+
+    if move_analysis.eval_before is not None and move_analysis.eval_after is not None:
+        parts.append(
+            f"You played {move_analysis.move_san}, which changed the engine's evaluation "
+            f"from {_fmt_eval(move_analysis.eval_before)} to {_fmt_eval(move_analysis.eval_after)} "
+            f"(positive numbers favor you)."
+        )
 
     if move_analysis.best_move_san:
         parts.append(f"A stronger move here was {move_analysis.best_move_san}.")
