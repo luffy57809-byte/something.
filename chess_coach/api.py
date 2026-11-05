@@ -1,4 +1,6 @@
 import re
+import threading
+import time
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -77,6 +79,42 @@ def root():
     return {"message": "Chess Coach API is running"}
 
 
+# --- Protect the heavy endpoints (Stockfish is slow and the server is small) ---
+_HEAVY_SLOT = threading.Semaphore(1)   # one analysis at a time
+_LAST_HEAVY = {}
+HEAVY_COOLDOWN_SECONDS = 20
+
+
+def heavy_job_guard(current_user: dict = Depends(get_current_user)):
+    now = time.time()
+    uid = current_user["id"]
+    wait = HEAVY_COOLDOWN_SECONDS - (now - _LAST_HEAVY.get(uid, 0))
+    if wait > 0:
+        raise HTTPException(status_code=429,
+                            detail=f"Please wait {int(wait) + 1} seconds before starting another analysis.")
+    if not _HEAVY_SLOT.acquire(blocking=False):
+        raise HTTPException(status_code=429,
+                            detail="The server is busy with another analysis. Please try again in a minute.")
+    _LAST_HEAVY[uid] = now
+    try:
+        yield
+    finally:
+        _HEAVY_SLOT.release()
+
+
+@app.get("/health")
+def health():
+    """For the uptime monitor: also touches the database so it stays awake."""
+    from sqlalchemy import text as _t
+    from chess_coach.database import get_connection
+    conn = get_connection()
+    try:
+        conn.execute(_t("SELECT 1"))
+    finally:
+        conn.close()
+    return {"status": "ok"}
+
+
 @app.post("/auth/register")
 def register(req: RegisterRequest):
     if len(req.password) < 8 or len(req.password.encode()) > 72:
@@ -121,7 +159,7 @@ def me(current_user: dict = Depends(get_current_user)):
     }
 
 
-@app.post("/analyze")
+@app.post("/analyze", dependencies=[Depends(heavy_job_guard)])
 def analyze(req: AnalyzeRequest, current_user: dict = Depends(get_current_user)):
     if req.source not in ("chesscom", "lichess"):
         raise HTTPException(status_code=400,
@@ -129,8 +167,8 @@ def analyze(req: AnalyzeRequest, current_user: dict = Depends(get_current_user))
     max_games = req.max_games
     if max_games < 1:
         max_games = 1
-    if max_games > 100:
-        max_games = 100
+    if max_games > 20:
+        max_games = 20
     try:
         result = run_pipeline(
             username=req.chess_username,
@@ -232,9 +270,10 @@ class DetectRequest(BaseModel):
     source: str = "chesscom"
 
 
-@app.post("/detect")
+@app.post("/detect", dependencies=[Depends(heavy_job_guard)])
 def detect_cheating(req: DetectRequest, current_user: dict = Depends(get_current_user)):
     """Run cheat detection on a player's recent games."""
+    req.max_games = max(1, min(req.max_games, 10))
     try:
         import sys
         sys.path.insert(0, '/opt/render/project/src')
