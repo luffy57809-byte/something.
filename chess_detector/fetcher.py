@@ -45,7 +45,9 @@ def get_chesscom_games(username: str, max_games: int = 20) -> list[str]:
         raw = games_resp.text
         individual_games = split_pgn(raw)
         
-        for game in individual_games:
+        for game in reversed(individual_games):  # newest first
+            if '[Variant "' in game and '[Variant "Standard' not in game:
+                continue  # skip chess960 and other variants
             if len(pgns) >= max_games:
                 break
             if game.strip():

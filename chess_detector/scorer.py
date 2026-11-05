@@ -116,18 +116,18 @@ class SuspicionScorer:
         features.append(self._top3_feature(stats, color))
 
         # 4. Critical move accuracy
-        features.append(self._critical_feature(moves))
+        features.append(self._critical_feature(pool))
 
         # 5. Blunder absence
-        features.append(self._blunder_feature(moves))
+        features.append(self._blunder_feature(pool))
 
         # 6. Move time consistency (if clock data exists)
-        time_feature = None if self._tc_bucket(analysis.time_control) == "bullet" else self._time_feature(moves)
+        time_feature = None if self._tc_bucket(analysis.time_control) == "bullet" else self._time_feature(pool)
         if time_feature:
             features.append(time_feature)
 
         # 7. CPL distribution
-        features.append(self._cpl_distribution_feature(moves))
+        features.append(self._cpl_distribution_feature(pool))
 
         # Weighted average
         total_weight = sum(f.weight for f in features)

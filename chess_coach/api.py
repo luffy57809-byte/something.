@@ -247,15 +247,29 @@ def detect_cheating(req: DetectRequest, current_user: dict = Depends(get_current
         reports = []
 
         if req.source == "chesscom":
-            pgns = get_chesscom_games(req.chess_username, max_games=req.max_games)
+            pgns = get_chesscom_games(req.chess_username, max_games=min(req.max_games * 4, 40))
         else:
             from chess_detector.fetcher import get_lichess_games
-            pgns = get_lichess_games(req.chess_username, max_games=req.max_games)
+            pgns = get_lichess_games(req.chess_username, max_games=min(req.max_games * 4, 40))
 
         if not pgns:
             raise HTTPException(status_code=404, detail="No games found for this user")
 
-        for pgn_text in pgns[:req.max_games]:
+        # bullet games are too short and premove-heavy to judge fairly
+        import re as _re
+
+        def _base_seconds(pgn):
+            m = _re.search(r'\[TimeControl "(\d+)', pgn)
+            return int(m.group(1)) if m else 0
+
+        pgns = [g for g in pgns if _base_seconds(g) >= 180]
+        if not pgns:
+            raise HTTPException(status_code=404,
+                                detail="No blitz or longer games found (bullet games are too short to judge)")
+
+        for pgn_text in pgns[:req.max_games * 2]:
+            if len(reports) >= req.max_games:
+                break
             try:
                 analysis = detect_analyze_pgn(pgn_text, req.chess_username)
                 if analysis is None:
@@ -267,6 +281,8 @@ def detect_cheating(req: DetectRequest, current_user: dict = Depends(get_current
                     color,
                     pgn_text=pgn_text
                 )
+                if report.features and report.features[0].name == "Sample size":
+                    continue  # too few analyzable moves to judge this game
                 reports.append({
                     "game_id": report.game_id,
                     "color": report.color,
@@ -288,7 +304,7 @@ def detect_cheating(req: DetectRequest, current_user: dict = Depends(get_current
                 continue
 
         if not reports:
-            raise HTTPException(status_code=400, detail="Could not analyze any games")
+            raise HTTPException(status_code=400, detail="Not enough analyzable moves to judge fairly (the games may be too short or decided early)")
 
         avg_score = round(sum(r["overall_score"] for r in reports) / len(reports), 1)
         if avg_score < 30:
@@ -297,6 +313,9 @@ def detect_cheating(req: DetectRequest, current_user: dict = Depends(get_current
             overall_verdict = "suspicious"
         else:
             overall_verdict = "likely cheating"
+
+        if len(reports) < 3 and overall_verdict == "likely cheating":
+            overall_verdict = "suspicious"  # too few games for the strongest verdict
 
         return {
             "username": req.chess_username,
