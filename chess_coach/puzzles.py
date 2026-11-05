@@ -56,8 +56,18 @@ def init_puzzles_table():
 
 def extract_game_puzzles(record, chess_username: str) -> list[dict]:
     puzzles = []
+    user = chess_username.lower()
+    if record.white.lower() == user:
+        my_color = "white"
+    elif record.black.lower() == user:
+        my_color = "black"
+    else:
+        return puzzles  # username not in this game; nothing to train on
+
     with engine.connect() as conn:
         for m in record.moves:
+            if m.color != my_color:
+                continue  # only the user's own mistakes
             if m.classification not in ("blunder", "mistake"):
                 continue
             if not m.best_move_san:
