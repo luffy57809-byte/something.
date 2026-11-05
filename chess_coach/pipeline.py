@@ -7,7 +7,7 @@ from chess_coach.stats import get_user_stats, get_game_summary, get_stats_for_ga
 from chess_coach.puzzles import init_puzzles_table, extract_game_puzzles
 
 
-def run_pipeline(username: str, max_games: int = 10, depth: int = 10,
+def run_pipeline(username: str, max_games: int = 10, depth: int = 12,
                  source: str = "chesscom") -> dict:
     init_db()
     init_puzzles_table()
