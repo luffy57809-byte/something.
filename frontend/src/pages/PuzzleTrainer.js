@@ -5,6 +5,21 @@ import EvalBar from '../components/EvalBar';
 import { getTrainingPuzzles, submitAttempt, getPuzzleStats } from '../api';
 import './PuzzleTrainer.css';
 
+function bestMoveLabel(puzzle) {
+  if (puzzle.best_move) return puzzle.best_move;
+  const uci = (puzzle.moves || '').split(' ')[0];
+  const fen = puzzle.fen_before || puzzle.fen;
+  if (!uci || !fen) return '';
+  try {
+    const result = new Chess(fen).move({
+      from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4],
+    });
+    return result.san;
+  } catch {
+    return uci;
+  }
+}
+
 export default function PuzzleTrainer() {
   const [chessUsername, setChessUsername] = useState('');
   const [submitted, setSubmitted] = useState(false);
@@ -104,7 +119,9 @@ export default function PuzzleTrainer() {
 
     const best = currentPuzzle.best_move || '';
     const uciMove = from + to;
-    const isCorrect = moveSan === best || uciMove === best;
+    const solutionFirst = (currentPuzzle.moves || '').split(' ')[0];
+    const isCorrect = moveSan === best || uciMove === best ||
+      (solutionFirst !== '' && uciMove === solutionFirst.slice(0, 4));
 
     // Update board to show the played move
     const newFen = game.fen();
@@ -245,7 +262,7 @@ export default function PuzzleTrainer() {
                   {!moveStatus && '🎯 Find the best move — drag a piece!'}
                   {moveStatus === 'correct' && '✓ Correct! Well done.'}
                   {moveStatus === 'wrong' && (
-                    <>✗ Not quite. Best was <strong>{currentPuzzle.best_move}</strong></>
+                    <>✗ Not quite. Best was <strong>{bestMoveLabel(currentPuzzle)}</strong></>
                   )}
                   {moveStatus === 'done' && '🎉 All puzzles complete!'}
                 </p>

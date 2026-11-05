@@ -119,7 +119,10 @@ def extract_game_puzzles(record, chess_username: str) -> list[dict]:
 
 def fetch_lichess_puzzle(theme: str) -> dict | None:
     url = "https://lichess.org/api/puzzle/next"
-    resp = http_requests.get(url, params={"angle": theme})
+    try:
+        resp = http_requests.get(url, params={"angle": theme}, timeout=10)
+    except http_requests.RequestException:
+        return None
     if resp.status_code != 200:
         return None
     data = resp.json()
