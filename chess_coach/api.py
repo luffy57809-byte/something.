@@ -267,14 +267,19 @@ def detect_cheating(req: DetectRequest, current_user: dict = Depends(get_current
             raise HTTPException(status_code=404,
                                 detail="No blitz or longer games found (bullet games are too short to judge)")
 
+        last_error = None
         for pgn_text in pgns[:req.max_games * 2]:
             if len(reports) >= req.max_games:
                 break
             try:
-                analysis = detect_analyze_pgn(pgn_text, req.chess_username)
+                analysis = detect_analyze_pgn(pgn_text, depth=12)
                 if analysis is None:
                     continue
-                color = analysis.player_color
+                color = ('white' if analysis.white_username.lower() == req.chess_username.lower()
+                         else 'black' if analysis.black_username.lower() == req.chess_username.lower()
+                         else None)
+                if color is None:
+                    continue  # username not found in this game
                 report = scorer.score(
                     analysis,
                     req.chess_username,
@@ -301,10 +306,11 @@ def detect_cheating(req: DetectRequest, current_user: dict = Depends(get_current
                 })
             except Exception as e:
                 print(f"Skipping game: {e}")
+                last_error = str(e)
                 continue
 
         if not reports:
-            raise HTTPException(status_code=400, detail="Not enough analyzable moves to judge fairly (the games may be too short or decided early)")
+            raise HTTPException(status_code=400, detail=(f"Analysis failed: {last_error[:200]}" if last_error else "Not enough analyzable moves to judge fairly (the games may be too short or decided early)"))
 
         avg_score = round(sum(r["overall_score"] for r in reports) / len(reports), 1)
         if avg_score < 30:

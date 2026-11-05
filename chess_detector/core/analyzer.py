@@ -80,7 +80,7 @@ def analyze_pgn(pgn_text: str, depth: int = 15) -> GameAnalysis:
         date=headers.get("Date", "?"),
         result=headers.get("Result", "*"),
     )
-    with chess.engine.SimpleEngine.popen_uci(STOCKFISH_PATH) as engine:
+    with chess.engine.SimpleEngine.popen_uci(_stockfish_path()) as engine:
         engine.configure({"Hash": 128, "Threads": 1})
         board = game.board()
         for ply, (move, node) in enumerate(zip(game.mainline_moves(), game.mainline()), start=1):
@@ -127,3 +127,12 @@ def _parse_clock(node):
         h, m, s = match.groups()
         return int(h) * 3600000 + int(m) * 60000 + int(float(s) * 1000)
     return None
+
+
+def _stockfish_path():
+    """Use the same Stockfish lookup as the rest of the app (bin/stockfish, then the system path)."""
+    try:
+        from chess_coach.analysis.engine import find_stockfish
+        return find_stockfish()
+    except Exception:
+        return STOCKFISH_PATH
