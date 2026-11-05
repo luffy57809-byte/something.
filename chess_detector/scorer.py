@@ -1,10 +1,13 @@
 from dataclasses import dataclass, field
 from typing import Optional
 import math
+from types import SimpleNamespace
 
 # ------------------------------------------------
 # Expected values by rating and time control
 # ------------------------------------------------
+
+MIN_MOVES_TO_JUDGE = 15
 
 EXPECTED_ACPL = {
     "bullet":    {1000: 80, 1200: 55, 1400: 45, 1600: 35, 1800: 25, 2000: 18, 2200: 12, 2400: 8},
@@ -77,16 +80,40 @@ class SuspicionScorer:
                 original_count = len(moves)
                 moves = filter_book_moves(moves, out_of_book_ply)
                 print(f"  Excluded {original_count - len(moves)} book moves (first {out_of_book_ply} plies)")
+        if rating is None and pgn_text:
+            rating = self._rating_from_pgn(pgn_text, color)
+
+        # Skip the first moves per side (theory) even if book detection found nothing
+        moves = [m for m in moves if m.ply > 8]
+
+        # Judge only moves that say something: not forced, not already decided
+        pool = [m for m in moves
+                if not m.forced and m.eval_before is not None and abs(m.eval_before) <= 300]
+        if len(pool) < MIN_MOVES_TO_JUDGE:
+            return SuspicionReport(
+                game_id=analysis.game_id, username=username, color=color,
+                overall_score=0.0, verdict="clean",
+                features=[FeatureScore("Sample size", len(pool), 0.0, 1.0,
+                                       f"Only {len(pool)} analyzable moves; too few to judge")],
+                flagged_moves=[],
+            )
+
+        cpls = [m.centipawn_loss for m in pool if m.centipawn_loss is not None]
+        stats = SimpleNamespace(**{
+            f"{color}_acpl": (sum(cpls) / len(cpls)) if cpls else None,
+            f"{color}_top1_pct": 100.0 * sum(1 for m in pool if m.is_top1) / len(pool),
+            f"{color}_top3_pct": 100.0 * sum(1 for m in pool if m.is_top3) / len(pool),
+        })
         features = []
 
         # 1. ACPL feature
-        features.append(self._acpl_feature(analysis, color, rating, analysis.time_control))
+        features.append(self._acpl_feature(stats, color, rating, analysis.time_control))
 
         # 2. Top-1 match rate
-        features.append(self._top1_feature(analysis, color, rating))
+        features.append(self._top1_feature(stats, color, rating))
 
         # 3. Top-3 match rate
-        features.append(self._top3_feature(analysis, color))
+        features.append(self._top3_feature(stats, color))
 
         # 4. Critical move accuracy
         features.append(self._critical_feature(moves))
@@ -95,7 +122,7 @@ class SuspicionScorer:
         features.append(self._blunder_feature(moves))
 
         # 6. Move time consistency (if clock data exists)
-        time_feature = self._time_feature(moves)
+        time_feature = None if self._tc_bucket(analysis.time_control) == "bullet" else self._time_feature(moves)
         if time_feature:
             features.append(time_feature)
 
@@ -196,6 +223,16 @@ class SuspicionScorer:
     # ------------------------------------------------
     # Helpers
     # ------------------------------------------------
+
+    def _rating_from_pgn(self, pgn_text: str, color: str):
+        import io
+        import chess.pgn
+        try:
+            game = chess.pgn.read_game(io.StringIO(pgn_text))
+            elo = game.headers.get("WhiteElo" if color == "white" else "BlackElo", "")
+            return int(elo) if str(elo).isdigit() else None
+        except Exception:
+            return None
 
     def _tc_bucket(self, tc: str) -> str:
         try:
