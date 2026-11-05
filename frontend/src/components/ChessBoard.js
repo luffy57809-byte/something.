@@ -1,170 +1,113 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Chessboard } from 'react-chessboard';
+import { Chess } from 'chess.js';
 
-const PIECES = {
-  'K': '♔', 'Q': '♕', 'R': '♖', 'B': '♗', 'N': '♘', 'P': '♙',
-  'k': '♚', 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟',
+// To use chess.com's green instead of the wood look, set
+// light: '#eeeed2' and dark: '#769656'.
+const THEME = {
+  light: '#ecdcb8',
+  dark: '#7a4f35',
+  lastLight: '#efd98f',
+  lastDark: '#b89242',
+  selLight: '#f3c969',
+  selDark: '#c99a2e',
 };
 
-const PIECE_COLORS = {
-  'K': '#fff', 'Q': '#fff', 'R': '#fff', 'B': '#fff', 'N': '#fff', 'P': '#fff',
-  'k': '#111', 'q': '#111', 'r': '#111', 'b': '#111', 'n': '#111', 'p': '#111',
-};
+const isLight = (sq) => (sq.charCodeAt(0) - 97 + Number(sq[1])) % 2 === 0;
 
-function parseFen(fen) {
-  const board = Array(8).fill(null).map(() => Array(8).fill(null));
-  const rows = fen.split(' ')[0].split('/');
-  rows.forEach((row, rankIdx) => {
-    let fileIdx = 0;
-    for (const ch of row) {
-      if (ch >= '1' && ch <= '8') {
-        fileIdx += parseInt(ch);
-      } else {
-        board[rankIdx][fileIdx] = ch;
-        fileIdx++;
-      }
-    }
-  });
-  return board;
-}
+export default function ChessBoard({ fen, onDrop, draggable = true, orientation = 'white' }) {
+  const position = !fen || fen === 'start' ? new Chess().fen() : fen;
+  const [selected, setSelected] = useState(null);
+  const [lastMove, setLastMove] = useState(null);
+  const pending = useRef(null);
 
-function squareName(rankIdx, fileIdx) {
-  return String.fromCharCode(97 + fileIdx) + (8 - rankIdx);
-}
-
-export default function ChessBoard({ fen, onDrop, draggable }) {
-  const [board, setBoard] = useState([]);
-  const [dragFrom, setDragFrom] = useState(null);
-  const [dragOver, setDragOver] = useState(null);
-
+  // When the position changes, highlight the move that caused it (if we made it)
   useEffect(() => {
-    if (fen && fen !== 'start') {
-      setBoard(parseFen(fen));
-      setDragFrom(null);
-      setDragOver(null);
+    setLastMove(pending.current);
+    pending.current = null;
+    setSelected(null);
+  }, [position]);
+
+  const legalMoves = useMemo(() => {
+    if (!selected) return [];
+    try {
+      return new Chess(position).moves({ square: selected, verbose: true });
+    } catch {
+      return [];
     }
-  }, [fen]);
+  }, [selected, position]);
 
-  const handleDragStart = (e, rankIdx, fileIdx) => {
-    if (!draggable) { e.preventDefault(); return; }
-    const piece = board[rankIdx][fileIdx];
-    if (!piece) { e.preventDefault(); return; }
-    setDragFrom([rankIdx, fileIdx]);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', squareName(rankIdx, fileIdx));
+  const tryMove = (from, to) => {
+    const ok = onDrop ? onDrop(from, to) !== false : false;
+    if (ok) pending.current = { from, to };
+    setSelected(null);
+    return ok;
   };
 
-  const handleDragOver = (e, rankIdx, fileIdx) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setDragOver([rankIdx, fileIdx]);
-  };
+  const handleSquareClick = (arg) => {
+    if (!draggable) return;
+    const square = typeof arg === 'string' ? arg : arg && arg.square;
+    if (!square) return;
 
-  const handleDragLeave = () => {
-    setDragOver(null);
-  };
-
-  const handleDrop = (e, rankIdx, fileIdx) => {
-    e.preventDefault();
-    setDragOver(null);
-    if (!dragFrom) return;
-    const [fromRank, fromFile] = dragFrom;
-    if (fromRank === rankIdx && fromFile === fileIdx) {
-      setDragFrom(null);
+    if (selected && legalMoves.some((m) => m.to === square)) {
+      tryMove(selected, square);
       return;
     }
-    const from = squareName(fromRank, fromFile);
-    const to = squareName(rankIdx, fileIdx);
-    if (onDrop) onDrop(from, to);
-    setDragFrom(null);
+    try {
+      const game = new Chess(position);
+      const piece = game.get(square);
+      if (piece && piece.color === game.turn()) {
+        setSelected(square === selected ? null : square);
+      } else {
+        setSelected(null);
+      }
+    } catch {
+      setSelected(null);
+    }
   };
 
-  const handleDragEnd = () => {
-    setDragFrom(null);
-    setDragOver(null);
-  };
+  const squareStyles = useMemo(() => {
+    const styles = {};
+    if (lastMove) {
+      [lastMove.from, lastMove.to].forEach((sq) => {
+        styles[sq] = { backgroundColor: isLight(sq) ? THEME.lastLight : THEME.lastDark };
+      });
+    }
+    if (selected) {
+      styles[selected] = { backgroundColor: isLight(selected) ? THEME.selLight : THEME.selDark };
+    }
+    legalMoves.forEach((m) => {
+      const capture = m.captured || (m.flags || '').includes('e');
+      const marker = capture
+        ? 'radial-gradient(circle, transparent 62%, rgba(0,0,0,0.28) 64%)'
+        : 'radial-gradient(circle, rgba(0,0,0,0.28) 20%, transparent 22%)';
+      styles[m.to] = { ...(styles[m.to] || {}), backgroundImage: marker };
+    });
+    return styles;
+  }, [lastMove, selected, legalMoves]);
 
-  if (!board.length) return <div style={{color:'#a9b5a6'}}>Loading board...</div>;
+  const options = {
+    id: 'chesslytic-board',
+    position,
+    boardOrientation: orientation,
+    allowDragging: !!draggable,
+    onPieceDrop: ({ sourceSquare, targetSquare }) => {
+      if (!targetSquare || targetSquare === sourceSquare) return false;
+      return tryMove(sourceSquare, targetSquare);
+    },
+    onSquareClick: handleSquareClick,
+    squareStyles,
+    lightSquareStyle: { backgroundColor: THEME.light },
+    darkSquareStyle: { backgroundColor: THEME.dark },
+    lightSquareNotationStyle: { color: THEME.dark },
+    darkSquareNotationStyle: { color: THEME.light },
+    boardStyle: { borderRadius: 4, boxShadow: '0 0 0 3px #7a4f35' },
+    animationDurationInMs: 180,
+  };
 
   return (
-    <div style={{ userSelect: 'none' }}>
-      <div style={{ display: 'flex' }}>
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          {[8,7,6,5,4,3,2,1].map(n => (
-            <div key={n} style={{
-              width: 20, height: 52,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: '#a9b5a6', fontSize: '0.75rem'
-            }}>{n}</div>
-          ))}
-        </div>
-        <div>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(8, 52px)',
-            gridTemplateRows: 'repeat(8, 52px)',
-            border: '3px solid #7a4f35',
-            borderRadius: '4px',
-            overflow: 'hidden',
-          }}>
-            {board.map((row, rankIdx) =>
-              row.map((piece, fileIdx) => {
-                const isLight = (rankIdx + fileIdx) % 2 === 0;
-                const isDragSource = dragFrom &&
-                  dragFrom[0] === rankIdx && dragFrom[1] === fileIdx;
-                const isDragTarget = dragOver &&
-                  dragOver[0] === rankIdx && dragOver[1] === fileIdx;
-                return (
-                  <div
-                    key={`${rankIdx}-${fileIdx}`}
-                    onDragOver={(e) => handleDragOver(e, rankIdx, fileIdx)}
-                    onDragLeave={handleDragLeave}
-                    onDrop={(e) => handleDrop(e, rankIdx, fileIdx)}
-                    style={{
-                      width: 52, height: 52,
-                      background: isDragSource ? '#d3a548'
-                        : isDragTarget ? '#e3c77a'
-                        : isLight ? '#ecdcb8' : '#7a4f35',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '36px',
-                      cursor: draggable && piece ? 'grab' : 'default',
-                      transition: 'background 0.1s',
-                    }}
-                  >
-                    {piece && (
-                      <span
-                        draggable={draggable}
-                        onDragStart={(e) => handleDragStart(e, rankIdx, fileIdx)}
-                        onDragEnd={handleDragEnd}
-                        style={{
-                          color: PIECE_COLORS[piece],
-                          textShadow: PIECE_COLORS[piece] === '#fff'
-                            ? '0 0 2px #000, 0 0 2px #000'
-                            : '0 0 2px #fff',
-                          lineHeight: 1,
-                          cursor: draggable ? 'grab' : 'default',
-                          display: 'block',
-                        }}
-                      >
-                        {PIECES[piece]}
-                      </span>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
-          <div style={{ display: 'flex', marginTop: '2px' }}>
-            {['a','b','c','d','e','f','g','h'].map(f => (
-              <div key={f} style={{
-                width: 52, textAlign: 'center',
-                color: '#a9b5a6', fontSize: '0.75rem'
-              }}>{f}</div>
-            ))}
-          </div>
-        </div>
-      </div>
+    <div style={{ width: 416, maxWidth: '100%', minWidth: 0 }}>
+      <Chessboard options={options} />
     </div>
   );
 }

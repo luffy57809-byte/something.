@@ -271,7 +271,6 @@ export default function PuzzleTrainer() {
               <div style={{ display: 'flex', alignItems: 'flex-start' }}>
                 <EvalBar evalScore={evalScore} />
                 <ChessBoard
-                  key={currentFen + currentIndex}
                   fen={currentFen}
                   onDrop={onDrop}
                   draggable={!moveStatus || moveStatus === 'correct' || moveStatus === 'wrong' || moveStatus === 'freeplay'}
