@@ -54,3 +54,15 @@
 .feature-note { color: var(--muted); font-size: 0.8rem; }
 
 .flagged-moves { margin-top: 0.75rem; color: var(--mistake); font-size: 0.85rem; }
+
+.detection-header::after {
+  content: 'These results are statistical estimates, not proof. Strong honest players can look unusual, and short samples mislead. Never accuse anyone based on this alone.';
+  display: block;
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.9rem;
+  max-width: 600px;
+  border-left: 3px solid var(--brass);
+  background: var(--table);
+  color: var(--muted);
+  font-size: 0.85rem;
+}
