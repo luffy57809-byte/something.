@@ -1,7 +1,9 @@
 import re
 import threading
 import time
-from fastapi import FastAPI, HTTPException, Depends, Header
+import html as _html
+import os as _os
+from fastapi import FastAPI, HTTPException, Depends, Header, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -11,8 +13,11 @@ from chess_coach.database import init_db, get_user_games
 from chess_coach.stats import get_user_stats
 from chess_coach.auth import (
     init_users_table, create_user, authenticate_user,
-    create_access_token, decode_token, get_user_by_username
+    create_access_token, decode_token, get_user_by_username,
+    create_purpose_token, decode_purpose_token, password_fingerprint,
+    get_user_by_email, mark_email_verified, set_password
 )
+from chess_coach.email_service import send_email, email_enabled
 from chess_coach.analysis.engine import find_stockfish
 from chess_coach.puzzles import (
     init_puzzles_table, get_training_puzzles,
@@ -86,6 +91,9 @@ HEAVY_COOLDOWN_SECONDS = 20
 
 
 def heavy_job_guard(current_user: dict = Depends(get_current_user)):
+    if email_enabled() and not current_user.get("email_verified", True):
+        raise HTTPException(status_code=403,
+                            detail="Please verify your email first. Check your inbox for the link.")
     now = time.time()
     uid = current_user["id"]
     wait = HEAVY_COOLDOWN_SECONDS - (now - _LAST_HEAVY.get(uid, 0))
@@ -116,7 +124,7 @@ def health():
 
 
 @app.post("/auth/register")
-def register(req: RegisterRequest):
+def register(req: RegisterRequest, background: BackgroundTasks):
     if len(req.password) < 8 or len(req.password.encode()) > 72:
         raise HTTPException(status_code=400,
                             detail="Password must be between 8 and 72 characters")
@@ -125,7 +133,9 @@ def register(req: RegisterRequest):
         if len(email) > 254 or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]{2,}", email):
             raise HTTPException(status_code=400, detail="Enter a valid email address")
         user = create_user(req.username, email, req.password)
+        background.add_task(send_verification_email, user)
         token = create_access_token({"sub": user["username"]})
+        user["email_verified"] = _verified(user)
         return {"access_token": token, "token_type": "bearer", "user": user}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -144,9 +154,112 @@ def login(req: LoginRequest):
             "id": user["id"],
             "username": user["username"],
             "email": user["email"],
-            "is_premium": bool(user["is_premium"])
+            "is_premium": bool(user["is_premium"]),
+            "email_verified": _verified(user)
         }
     }
+
+
+# --- Email verification and password reset ---
+
+FRONTEND_URL = _os.environ.get("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+_LAST_MAIL = {}
+
+
+class TokenRequest(BaseModel):
+    token: str
+
+
+class EmailRequest(BaseModel):
+    email: str
+
+
+class ResetRequest(BaseModel):
+    token: str
+    password: str
+
+
+def _mail_throttled(key: str, seconds: int = 60) -> bool:
+    now = time.time()
+    if now - _LAST_MAIL.get(key, 0) < seconds:
+        return True
+    _LAST_MAIL[key] = now
+    return False
+
+
+def _verified(user: dict) -> bool:
+    return bool(user.get("email_verified", True)) or not email_enabled()
+
+
+def send_verification_email(user: dict):
+    if not email_enabled():
+        return
+    token = create_purpose_token(user["username"], "verify", 60 * 24)
+    link = f"{FRONTEND_URL}/verify?token={token}"
+    name = _html.escape(user["username"])
+    send_email(
+        user["email"], "Verify your Chesslytic email",
+        f"<p>Hi {name},</p><p>Confirm your email address to start analyzing games:</p>"
+        f'<p><a href="{link}">Verify my email</a></p>'
+        "<p>The link works for 24 hours. If you did not create an account, ignore this email.</p>",
+    )
+
+
+def send_reset_email(user: dict):
+    if not email_enabled():
+        return
+    token = create_purpose_token(user["username"], "reset", 60,
+                                 {"pwv": password_fingerprint(user["hashed_password"])})
+    link = f"{FRONTEND_URL}/reset-password?token={token}"
+    name = _html.escape(user["username"])
+    send_email(
+        user["email"], "Reset your Chesslytic password",
+        f"<p>Hi {name},</p><p>Use this link to choose a new password:</p>"
+        f'<p><a href="{link}">Reset my password</a></p>'
+        "<p>The link works for one hour and only once. If you did not ask for this, ignore this email.</p>",
+    )
+
+
+@app.post("/auth/verify-email")
+def verify_email(req: TokenRequest):
+    payload = decode_purpose_token(req.token, "verify")
+    if not payload:
+        raise HTTPException(status_code=400, detail="This verification link is invalid or has expired.")
+    mark_email_verified(payload["sub"])
+    return {"verified": True}
+
+
+@app.post("/auth/resend-verification")
+def resend_verification(background: BackgroundTasks,
+                        current_user: dict = Depends(get_current_user)):
+    if _verified(current_user):
+        return {"sent": False}
+    if _mail_throttled(f"verify:{current_user['id']}"):
+        raise HTTPException(status_code=429, detail="Please wait a minute before requesting another email.")
+    background.add_task(send_verification_email, current_user)
+    return {"sent": True}
+
+
+@app.post("/auth/forgot-password")
+def forgot_password(req: EmailRequest, background: BackgroundTasks):
+    email = req.email.strip().lower()
+    user = get_user_by_email(email)
+    if user and not _mail_throttled(f"reset:{email}"):
+        background.add_task(send_reset_email, user)
+    return {"sent": True}  # same answer whether or not the account exists
+
+
+@app.post("/auth/reset-password")
+def reset_password(req: ResetRequest):
+    payload = decode_purpose_token(req.token, "reset")
+    user = get_user_by_username(payload["sub"]) if payload else None
+    if not user or payload.get("pwv") != password_fingerprint(user["hashed_password"]):
+        raise HTTPException(status_code=400, detail="This reset link is invalid, expired, or already used.")
+    if len(req.password) < 8 or len(req.password.encode()) > 72:
+        raise HTTPException(status_code=400, detail="Password must be between 8 and 72 characters")
+    set_password(user["username"], req.password)
+    mark_email_verified(user["username"])  # they proved they control this address
+    return {"reset": True}
 
 
 @app.get("/auth/me")
@@ -155,7 +268,8 @@ def me(current_user: dict = Depends(get_current_user)):
         "id": current_user["id"],
         "username": current_user["username"],
         "email": current_user["email"],
-        "is_premium": bool(current_user["is_premium"])
+        "is_premium": bool(current_user["is_premium"]),
+        "email_verified": _verified(current_user)
     }
 
 

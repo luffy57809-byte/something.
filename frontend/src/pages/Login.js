@@ -59,6 +59,8 @@ export default function Login() {
         </form>
         <p className="auth-footer">
           No account? <Link to="/register">Register</Link>
+          <br />
+          <Link to="/forgot-password">Forgot password?</Link>
         </p>
       </div>
     </div>

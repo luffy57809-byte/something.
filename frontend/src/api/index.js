@@ -46,3 +46,15 @@ export const clearCache = (username) =>
 
 export const detectCheating = (chess_username, max_games = 5, source = 'chesscom') =>
   API.post('/detect', { chess_username, max_games, source });
+
+export const verifyEmail = (token) =>
+  API.post('/auth/verify-email', { token });
+
+export const resendVerification = () =>
+  API.post('/auth/resend-verification');
+
+export const forgotPassword = (email) =>
+  API.post('/auth/forgot-password', { email });
+
+export const resetPassword = (token, password) =>
+  API.post('/auth/reset-password', { token, password });

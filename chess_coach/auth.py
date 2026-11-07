@@ -1,4 +1,5 @@
 import os
+import hashlib
 from datetime import datetime, timedelta
 from typing import Optional
 from sqlalchemy import text
@@ -22,10 +23,19 @@ def init_users_table():
                 email TEXT UNIQUE NOT NULL,
                 hashed_password TEXT NOT NULL,
                 is_premium INTEGER DEFAULT 0,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                email_verified INTEGER DEFAULT 0
             )
         """))
         conn.commit()
+
+        # Existing databases: add the column once; accounts that already exist count as verified
+        try:
+            conn.execute(text("ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0"))
+            conn.execute(text("UPDATE users SET email_verified = 1"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
 
 
 def _truncate_password(password: str) -> str:
@@ -61,7 +71,7 @@ def create_user(username: str, email: str, password: str) -> dict:
                 raise ValueError("Email already registered")
             raise
     return {"id": user_id, "username": username,
-            "email": email, "is_premium": False}
+            "email": email, "is_premium": False, "email_verified": False}
 
 
 def get_user_by_username(username: str) -> Optional[dict]:
@@ -72,9 +82,11 @@ def get_user_by_username(username: str) -> Optional[dict]:
         ).fetchone()
     if not row:
         return None
+    m = row._mapping
     return {
         "id": row[0], "username": row[1], "email": row[2],
-        "hashed_password": row[3], "is_premium": row[4]
+        "hashed_password": row[3], "is_premium": row[4],
+        "email_verified": bool(m.get("email_verified", 1)),
     }
 
 
@@ -99,3 +111,59 @@ def decode_token(token: str) -> Optional[dict]:
         return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except JWTError:
         return None
+
+
+def _purpose_key(purpose: str) -> str:
+    # A separate signing key per purpose, so emailed links can never work as login tokens
+    return f"{SECRET_KEY}:{purpose}"
+
+
+def password_fingerprint(hashed_password: str) -> str:
+    return hashlib.sha256(hashed_password.encode()).hexdigest()[:16]
+
+
+def create_purpose_token(username: str, purpose: str, minutes: int,
+                         extra: Optional[dict] = None) -> str:
+    data = {"sub": username, "purpose": purpose,
+            "exp": datetime.utcnow() + timedelta(minutes=minutes)}
+    if extra:
+        data.update(extra)
+    return jwt.encode(data, _purpose_key(purpose), algorithm=ALGORITHM)
+
+
+def decode_purpose_token(token: str, purpose: str) -> Optional[dict]:
+    try:
+        payload = jwt.decode(token, _purpose_key(purpose), algorithms=[ALGORITHM])
+    except JWTError:
+        return None
+    return payload if payload.get("purpose") == purpose else None
+
+
+def get_user_by_email(email: str) -> Optional[dict]:
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT * FROM users WHERE lower(email) = lower(:e)"),
+            {"e": email}
+        ).fetchone()
+    if not row:
+        return None
+    m = row._mapping
+    return {
+        "id": m["id"], "username": m["username"], "email": m["email"],
+        "hashed_password": m["hashed_password"], "is_premium": m["is_premium"],
+        "email_verified": bool(m.get("email_verified", 1)),
+    }
+
+
+def mark_email_verified(username: str) -> None:
+    with engine.connect() as conn:
+        conn.execute(text("UPDATE users SET email_verified = 1 WHERE username = :u"),
+                     {"u": username})
+        conn.commit()
+
+
+def set_password(username: str, new_password: str) -> None:
+    with engine.connect() as conn:
+        conn.execute(text("UPDATE users SET hashed_password = :h WHERE username = :u"),
+                     {"h": hash_password(new_password), "u": username})
+        conn.commit()
