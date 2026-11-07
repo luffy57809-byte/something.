@@ -196,18 +196,25 @@ def get_training_puzzles(chess_username: str, app_username: str,
     stats = get_user_stats(chess_username)
     pattern_counts = stats.get("pattern_counts", {})
 
-    lichess_puzzles = []
+    wanted = []
     for pattern, count in sorted(pattern_counts.items(),
-                                  key=lambda x: x[1], reverse=True):
+                                 key=lambda x: x[1], reverse=True):
         theme = PATTERN_TO_THEME.get(pattern)
-        if not theme:
-            continue
-        puzzle = get_themed_puzzle(theme)
-        if puzzle:
-            puzzle["pattern"] = pattern
-            lichess_puzzles.append(puzzle)
-        if len(lichess_puzzles) >= 3:
+        if theme:
+            wanted.append((pattern, theme))
+        if len(wanted) >= 3:
             break
+
+    # Ask Lichess for all the themed puzzles at the same time
+    from concurrent.futures import ThreadPoolExecutor
+    lichess_puzzles = []
+    if wanted:
+        with ThreadPoolExecutor(max_workers=len(wanted)) as pool:
+            results = list(pool.map(lambda w: get_themed_puzzle(w[1]), wanted))
+        for (pattern, _), puzzle in zip(wanted, results):
+            if puzzle:
+                puzzle["pattern"] = pattern
+                lichess_puzzles.append(puzzle)
 
     return {
         "game_puzzles": game_puzzles,
