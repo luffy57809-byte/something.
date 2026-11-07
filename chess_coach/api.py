@@ -110,7 +110,7 @@ def heavy_job_guard(current_user: dict = Depends(get_current_user)):
         _HEAVY_SLOT.release()
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health():
     """For the uptime monitor: also touches the database so it stays awake."""
     from sqlalchemy import text as _t
