@@ -66,10 +66,34 @@ class SuspicionReport:
 # Scorer
 # ------------------------------------------------
 
+def _convert_clocks_to_think_times(analysis):
+    """The analyzer stores the clock time left after each move; turn it into time spent."""
+    if getattr(analysis, "_clock_converted", False):
+        return
+    import re
+    m = re.fullmatch(r"(\d+)(?:\+(\d+))?", str(getattr(analysis, "time_control", "")))
+    if not m:
+        for mv in analysis.moves:  # daily games and unknown formats: clock data is meaningless
+            mv.think_time_ms = None
+    else:
+        base_ms = int(m.group(1)) * 1000
+        inc_ms = int(m.group(2) or 0) * 1000
+        last = {"white": base_ms, "black": base_ms}
+        for mv in analysis.moves:
+            clock = mv.think_time_ms
+            if clock is None:
+                continue
+            spent = last[mv.color] - clock + inc_ms
+            last[mv.color] = clock
+            mv.think_time_ms = max(0, spent)
+    analysis._clock_converted = True
+
+
 class SuspicionScorer:
 
     def score(self, analysis, username: str, color: str, rating: Optional[int] = None, pgn_text: str = None) -> SuspicionReport:
         from chess_detector.opening import get_out_of_book_ply, filter_book_moves
+        _convert_clocks_to_think_times(analysis)
         moves = [m for m in analysis.moves if m.color == color]
         
         # Remove opening book moves from analysis
