@@ -1,6 +1,7 @@
 import re
 import threading
 import time
+import hashlib
 import html as _html
 import os as _os
 from fastapi import FastAPI, HTTPException, Depends, Header, BackgroundTasks
@@ -384,6 +385,32 @@ class DetectRequest(BaseModel):
     source: str = "chesscom"
 
 
+# --- Small in-memory caches for cheat detection (cleared on every restart) ---
+_CACHE = {}
+
+
+def _cache_get(key, ttl):
+    item = _CACHE.get(key)
+    if item and time.time() - item[0] < ttl:
+        return item[1]
+    return None
+
+
+def _cache_put(key, value):
+    if len(_CACHE) > 300:
+        _CACHE.clear()
+    _CACHE[key] = (time.time(), value)
+
+
+def _cached_games(key, loader):
+    games = _cache_get(key, 600)  # reuse a downloaded game list for 10 minutes
+    if games is None:
+        games = loader()
+        if games:
+            _cache_put(key, games)
+    return games
+
+
 @app.post("/detect", dependencies=[Depends(heavy_job_guard)])
 def detect_cheating(req: DetectRequest, current_user: dict = Depends(get_current_user)):
     """Run cheat detection on a player's recent games."""
@@ -400,10 +427,12 @@ def detect_cheating(req: DetectRequest, current_user: dict = Depends(get_current
         reports = []
 
         if req.source == "chesscom":
-            pgns = get_chesscom_games(req.chess_username, max_games=min(req.max_games * 4, 40))
+            pgns = _cached_games(("chesscom", req.chess_username.lower()),
+                                 lambda: get_chesscom_games(req.chess_username, max_games=40))
         else:
             from chess_detector.fetcher import get_lichess_games
-            pgns = get_lichess_games(req.chess_username, max_games=min(req.max_games * 4, 40))
+            pgns = _cached_games(("lichess", req.chess_username.lower()),
+                                 lambda: get_lichess_games(req.chess_username, max_games=40))
 
         if not pgns:
             raise HTTPException(status_code=404, detail="No games found for this user")
@@ -425,7 +454,13 @@ def detect_cheating(req: DetectRequest, current_user: dict = Depends(get_current
             if len(reports) >= req.max_games:
                 break
             try:
-                analysis = detect_analyze_pgn(pgn_text, depth=12)
+                cache_key = ("detect", hashlib.sha1(pgn_text.encode()).hexdigest(),
+                             req.chess_username.lower())
+                hit = _cache_get(cache_key, 24 * 3600)
+                if hit is not None:
+                    reports.append(hit)
+                    continue
+                analysis = detect_analyze_pgn(pgn_text, depth=int(_os.environ.get("DETECT_DEPTH", "12")))
                 if analysis is None:
                     continue
                 color = ('white' if analysis.white_username.lower() == req.chess_username.lower()
@@ -441,7 +476,7 @@ def detect_cheating(req: DetectRequest, current_user: dict = Depends(get_current
                 )
                 if report.features and report.features[0].name == "Sample size":
                     continue  # too few analyzable moves to judge this game
-                reports.append({
+                entry = {
                     "game_id": report.game_id,
                     "color": report.color,
                     "overall_score": report.overall_score,
@@ -456,7 +491,9 @@ def detect_cheating(req: DetectRequest, current_user: dict = Depends(get_current
                         for f in report.features
                     ],
                     "flagged_moves": report.flagged_moves,
-                })
+                }
+                _cache_put(cache_key, entry)
+                reports.append(entry)
             except Exception as e:
                 print(f"Skipping game: {e}")
                 last_error = str(e)

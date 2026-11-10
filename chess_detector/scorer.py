@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Optional
 import math
+import os
 from types import SimpleNamespace
 
 # ------------------------------------------------
@@ -133,7 +134,7 @@ class SuspicionScorer:
         moves = [m for m in analysis.moves if m.color == color]
         
         # Remove opening book moves from analysis
-        if pgn_text:
+        if pgn_text and os.environ.get("DETECT_USE_BOOK") == "1":
             print(f"  Detecting opening book moves...")
             out_of_book_ply = get_out_of_book_ply(pgn_text)
             if out_of_book_ply > 0:
