@@ -1,9 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Chess } from 'chess.js';
 import ChessBoard from '../components/ChessBoard';
 import EvalBar from '../components/EvalBar';
 import { getTrainingPuzzles, submitAttempt, getPuzzleStats } from '../api';
 import './PuzzleTrainer.css';
+
+function materialEval(fen) {
+  const pieceValues = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+  let whiteMat = 0, blackMat = 0;
+  for (const ch of fen.split(' ')[0]) {
+    if (ch in pieceValues) blackMat += pieceValues[ch];
+    else if (ch.toLowerCase() in pieceValues) whiteMat += pieceValues[ch.toLowerCase()];
+  }
+  return (whiteMat - blackMat) * 100;
+}
 
 function bestMoveLabel(puzzle) {
   if (puzzle.best_move) return puzzle.best_move;
@@ -33,6 +43,13 @@ export default function PuzzleTrainer() {
   const [puzzleStats, setPuzzleStats] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [solutionStep, setSolutionStep] = useState(0);
+  const [replying, setReplying] = useState(false);
+  const [progressNote, setProgressNote] = useState('');
+  const [bestHint, setBestHint] = useState('');
+  const replyTimer = useRef(null);
+
+  useEffect(() => () => clearTimeout(replyTimer.current), []);
 
   const currentPuzzle = currentType === 'game'
     ? puzzles[currentIndex]
@@ -47,6 +64,11 @@ export default function PuzzleTrainer() {
       const fen = currentPuzzle.fen_before || currentPuzzle.fen;
       if (fen) setCurrentFen(fen);
       setMoveStatus('');
+      clearTimeout(replyTimer.current);
+      setSolutionStep(0);
+      setReplying(false);
+      setProgressNote('');
+      setBestHint('');
       // Set initial eval from puzzle data
       const initEval = currentPuzzle?.eval_before || 0;
       setEvalScore(initEval);
@@ -78,6 +100,65 @@ export default function PuzzleTrainer() {
     }
   };
 
+  const handleMultiStepMove = (from, to, solution) => {
+    const expected = solution[solutionStep];
+    if (!expected) return false;
+
+    const game = new Chess(currentFen);
+    const promo = expected.length === 5 && expected.slice(0, 4) === from + to ? expected[4] : 'q';
+    try {
+      if (!game.move({ from, to, promotion: promo })) return false;
+    } catch {
+      return false;
+    }
+    const newFen = game.fen();
+
+    if (from + to !== expected.slice(0, 4)) {
+      let hint = expected;
+      try {
+        hint = new Chess(currentFen).move({
+          from: expected.slice(0, 2), to: expected.slice(2, 4), promotion: expected[4],
+        }).san;
+      } catch { /* keep the raw move */ }
+      setBestHint(hint);
+      setCurrentFen(newFen);
+      setEvalScore(materialEval(newFen));
+      setProgressNote('');
+      setMoveStatus('wrong');
+      submitAttempt(currentPuzzle.puzzle_id, currentType, false);
+      return true;
+    }
+
+    setCurrentFen(newFen);
+    setEvalScore(materialEval(newFen));
+
+    if (solutionStep + 1 >= solution.length) {
+      setProgressNote('');
+      setMoveStatus('correct');
+      submitAttempt(currentPuzzle.puzzle_id, currentType, true)
+        .then(() => getPuzzleStats().then((r) => setPuzzleStats(r.data.puzzle_stats)));
+      return true;
+    }
+
+    // Correct so far: play the opponent's reply, then wait for the next move
+    const reply = solution[solutionStep + 1];
+    const step = solutionStep;
+    setReplying(true);
+    setProgressNote('✓ Correct! Keep going.');
+    replyTimer.current = setTimeout(() => {
+      try {
+        const g = new Chess(newFen);
+        g.move({ from: reply.slice(0, 2), to: reply.slice(2, 4), promotion: reply[4] });
+        const fen2 = g.fen();
+        setCurrentFen(fen2);
+        setEvalScore(materialEval(fen2));
+      } catch { /* ignore a bad reply move */ }
+      setSolutionStep(step + 2);
+      setReplying(false);
+    }, 500);
+    return true;
+  };
+
   const onDrop = (from, to) => {
     if (!currentPuzzle) return false;
     // Allow free play after puzzle is done
@@ -102,6 +183,14 @@ export default function PuzzleTrainer() {
       } catch { return false; }
     }
     if (moveStatus) return false;
+    if (replying) return false;
+
+    const solution = currentType === 'lichess'
+      ? (currentPuzzle.moves || '').split(' ').filter(Boolean)
+      : [];
+    if (solution.length > 1) {
+      return handleMultiStepMove(from, to, solution);
+    }
 
     const fen = currentPuzzle.fen_before || currentPuzzle.fen;
     if (!fen) return false;
@@ -161,6 +250,11 @@ export default function PuzzleTrainer() {
   };
 
   const resetPuzzle = () => {
+    clearTimeout(replyTimer.current);
+    setSolutionStep(0);
+    setReplying(false);
+    setProgressNote('');
+    setBestHint('');
     if (currentPuzzle) {
       const fen = currentPuzzle.fen_before || currentPuzzle.fen;
       if (fen) setCurrentFen(fen);
@@ -258,11 +352,12 @@ export default function PuzzleTrainer() {
                   </>
                 )}
 
+                {progressNote && !moveStatus && <p className="puzzle-pattern">{progressNote}</p>}
                 <p className="puzzle-instruction">
                   {!moveStatus && '🎯 Find the best move — drag a piece!'}
                   {moveStatus === 'correct' && '✓ Correct! Well done.'}
                   {moveStatus === 'wrong' && (
-                    <>✗ Not quite. Best was <strong>{bestMoveLabel(currentPuzzle)}</strong></>
+                    <>✗ Not quite. Best was <strong>{bestHint || bestMoveLabel(currentPuzzle)}</strong></>
                   )}
                   {moveStatus === 'done' && '🎉 All puzzles complete!'}
                 </p>
