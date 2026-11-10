@@ -89,6 +89,42 @@ def _convert_clocks_to_think_times(analysis):
     analysis._clock_converted = True
 
 
+# Rough share of moves that lose 150+ centipawns, by rating. These are estimates; tune with real data.
+BLUNDER_RATE = {1000: 0.08, 1200: 0.065, 1400: 0.05, 1600: 0.04, 1800: 0.03,
+                2000: 0.022, 2200: 0.015, 2400: 0.01, 2600: 0.007, 2800: 0.005}
+
+
+def _interp_table(table, x):
+    keys = sorted(table)
+    if x <= keys[0]:
+        return table[keys[0]]
+    if x >= keys[-1]:
+        return table[keys[-1]]
+    for lo, hi in zip(keys, keys[1:]):
+        if lo <= x <= hi:
+            t = (x - lo) / (hi - lo)
+            return table[lo] + t * (table[hi] - table[lo])
+
+
+def _poisson_cdf(k, lam):
+    term = total = math.exp(-lam)
+    for i in range(1, k + 1):
+        term *= lam / i
+        total += term
+    return total
+
+
+def blunder_suspicion(blunders, n_moves, rating):
+    """Return (score 0-50, expected blunders). Scores only when this few blunders is rare for the rating."""
+    if not rating or n_moves < 10:
+        return 0.0, 0.0
+    expected = _interp_table(BLUNDER_RATE, rating) * n_moves
+    p = _poisson_cdf(blunders, expected)  # chance of this few blunders or fewer
+    if p >= 0.2:
+        return 0.0, expected
+    return round(50 * (1 - p / 0.2), 1), expected
+
+
 class SuspicionScorer:
 
     def score(self, analysis, username: str, color: str, rating: Optional[int] = None, pgn_text: str = None) -> SuspicionReport:
@@ -143,7 +179,7 @@ class SuspicionScorer:
         features.append(self._critical_feature(pool))
 
         # 5. Blunder absence
-        features.append(self._blunder_feature(pool))
+        features.append(self._blunder_feature(pool, rating))
 
         # 6. Move time consistency (if clock data exists)
         time_feature = None if self._tc_bucket(analysis.time_control) == "bullet" else self._time_feature(pool)
@@ -210,14 +246,18 @@ class SuspicionScorer:
         note = f"Engine-perfect in {ratio:.0f}% of balanced positions"
         return FeatureScore("Critical position accuracy", ratio, round(score, 1), 2.0, note)
 
-    def _blunder_feature(self, moves):
+    def _blunder_feature(self, moves, rating=None):
         total = len(moves)
         if total == 0:
             return FeatureScore("Blunder absence", 0, 0, 1.0, "no data")
         blunders = [m for m in moves if m.centipawn_loss is not None and m.centipawn_loss > 150]
         rate = len(blunders) / total * 100
-        score = max(0, 50 - rate * 8)
-        note = f"{len(blunders)} blunders in {total} moves ({rate:.1f}%)"
+        score, expected = blunder_suspicion(len(blunders), total, rating)
+        if rating:
+            note = (f"{len(blunders)} blunders in {total} moves ({rate:.1f}%); "
+                    f"about {expected:.1f} expected at rating {rating}")
+        else:
+            note = f"{len(blunders)} blunders in {total} moves ({rate:.1f}%); rating unknown, not scored"
         return FeatureScore("Blunder absence", rate, round(score, 1), 1.0, note)
 
     def _time_feature(self, moves):
@@ -285,7 +325,7 @@ class SuspicionScorer:
     def _cpl_distribution_feature(self, moves):
         from chess_detector.cpl_distribution import compute_cpl_distribution, cpl_distribution_score
         dist = compute_cpl_distribution(moves)
-        score, explanation = cpl_distribution_score(dist)
+        score, explanation = cpl_distribution_score(dist, count_blunders=False)
         note = explanation
         if "error" not in dist:
             note += f" | CV={dist.get('cv','?')} perfect={dist.get('perfect_pct','?')}%"

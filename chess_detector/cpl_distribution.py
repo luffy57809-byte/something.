@@ -81,7 +81,7 @@ def compute_cpl_distribution(moves: list) -> dict:
     }
 
 
-def cpl_distribution_score(dist: dict) -> tuple[float, str]:
+def cpl_distribution_score(dist: dict, count_blunders: bool = True) -> tuple[float, str]:
     """
     Convert CPL distribution stats into a 0-100 suspicion score.
     Returns (score, explanation).
@@ -118,7 +118,9 @@ def cpl_distribution_score(dist: dict) -> tuple[float, str]:
     
     # No blunders
     blunders = dist["blunder_pct"]
-    if blunders == 0:
+    if not count_blunders:
+        pass  # scored separately, adjusted for rating
+    elif blunders == 0:
         score += 15
         reasons.append("zero blunders")
     elif blunders < 2:
