@@ -1,7 +1,8 @@
 import axios from 'axios';
 
 const API = axios.create({
-  baseURL: process.env.NODE_ENV === 'development' ? '' : 'https://something-p8bx.onrender.com',
+  baseURL: process.env.REACT_APP_API_URL ||
+    (process.env.NODE_ENV === 'development' ? '' : 'https://something-p8bx.onrender.com'),
 });
 
 API.interceptors.request.use((config) => {
