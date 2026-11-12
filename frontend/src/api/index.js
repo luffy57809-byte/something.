@@ -59,3 +59,9 @@ export const forgotPassword = (email) =>
 
 export const resetPassword = (token, password) =>
   API.post('/auth/reset-password', { token, password });
+
+export const startDetection = (chess_username, max_games, source) =>
+  API.post('/detect/start', { chess_username, max_games, source });
+
+export const getDetectionStatus = (jobId) =>
+  API.get(`/detect/status/${jobId}`);
