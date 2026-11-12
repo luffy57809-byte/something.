@@ -65,3 +65,6 @@ export const startDetection = (chess_username, max_games, source) =>
 
 export const getDetectionStatus = (jobId) =>
   API.get(`/detect/status/${jobId}`);
+
+export const getProgress = (username) =>
+  API.get(`/user/${encodeURIComponent(username)}/progress`);

@@ -132,3 +132,64 @@ def _compute_stats(rows) -> dict:
         "pattern_counts": pattern_counts,
         "top_weakness": top_pattern,
     }
+
+
+def _progress_from_rows(rows, limit=60):
+    """Group per-move rows into one summary per game (the user's own moves only)."""
+    by_game = {}
+    for r in rows:
+        by_game.setdefault(r[0], []).append(r)
+
+    games = []
+    for game_id, grows in by_game.items():
+        first = grows[0]
+        color, date, white, black, result = first[2], first[7], first[8], first[9], first[10]
+        n = len(grows)
+        accuracy = sum(_move_accuracy(r[5], r[6], r[4]) for r in grows) / n
+        if result == "1/2-1/2":
+            outcome = "draw"
+        elif (result == "1-0" and color == "white") or (result == "0-1" and color == "black"):
+            outcome = "win"
+        elif result in ("1-0", "0-1"):
+            outcome = "loss"
+        else:
+            outcome = "unknown"
+        games.append({
+            "game_id": game_id,
+            "date": date,
+            "color": color,
+            "opponent": black if color == "white" else white,
+            "outcome": outcome,
+            "result": result,
+            "accuracy_pct": round(accuracy, 1),
+            "blunders": sum(1 for r in grows if r[1] == "blunder"),
+            "mistakes": sum(1 for r in grows if r[1] == "mistake"),
+            "inaccuracies": sum(1 for r in grows if r[1] == "inaccuracy"),
+            "moves": n,
+        })
+
+    games.sort(key=lambda g: (g["date"] or "", g["game_id"]))
+    games = games[-limit:]
+    keep = {g["game_id"] for g in games}
+    pattern_counts = {}
+    for r in rows:
+        if r[0] in keep:
+            for tag in json.loads(r[3] or "[]"):
+                pattern_counts[tag] = pattern_counts.get(tag, 0) + 1
+    return {"games": games, "pattern_counts": pattern_counts}
+
+
+def get_user_progress(username: str, limit: int = 60) -> dict:
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT m.game_id, m.classification, m.color, m.pattern_tags,
+                   m.eval_drop, m.eval_before, m.eval_after,
+                   g.date, g.white, g.black, g.result
+            FROM moves m
+            JOIN games g ON m.game_id = g.game_id
+            WHERE lower(g.username) = lower(:u)
+              AND ((m.color = 'white' AND lower(g.white) = lower(:u))
+                OR (m.color = 'black' AND lower(g.black) = lower(:u)))
+            ORDER BY m.game_id, m.id
+        """), {"u": username}).fetchall()
+    return _progress_from_rows(rows, limit)

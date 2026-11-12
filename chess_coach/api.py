@@ -12,7 +12,7 @@ from typing import Optional
 
 from chess_coach.pipeline import run_pipeline, get_game_report
 from chess_coach.database import init_db, get_user_games
-from chess_coach.stats import get_user_stats
+from chess_coach.stats import get_user_stats, get_user_progress
 from chess_coach.auth import (
     init_users_table, create_user, authenticate_user,
     create_access_token, decode_token, get_user_by_username,
@@ -361,6 +361,11 @@ def puzzle_stats(current_user: dict = Depends(get_current_user)):
     return {"username": current_user["username"], "puzzle_stats": stats}
 
 
+
+
+@app.get("/user/{username}/progress")
+def user_progress(username: str, current_user: dict = Depends(get_current_user)):
+    return get_user_progress(username.lower())
 
 
 @app.delete("/user/{username}/cache")

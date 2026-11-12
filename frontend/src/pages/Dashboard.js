@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { analyzeGames, getUserGames, getUserStats, clearCache } from '../api';
 import { useAuth } from '../context/AuthContext';
+import ProgressPanel from '../components/ProgressPanel';
 import './Dashboard.css';
 
 function getResultClass(game, chessUsername) {
@@ -27,6 +28,29 @@ export default function Dashboard() {
 
   const cap = 100;
 
+  // Reopen with your last chess username: load saved stats and games (no new analysis)
+  useEffect(() => {
+    let saved = null;
+    try {
+      saved = localStorage.getItem('chessUsername');
+    } catch {
+      return;
+    }
+    if (!saved) return;
+    setChessUsername(saved);
+    Promise.all([getUserStats(saved), getUserGames(saved)])
+      .then(([statsRes, gamesRes]) => {
+        const st = statsRes.data.stats;
+        if (st && Object.keys(st).length) {
+          setStats(st);
+          setGames(gamesRes.data.games.slice(0, 5));
+          setAnalyzedUsername(saved);
+          setAnalyzed(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const handleRefresh = async () => {
     if (!chessUsername) return;
     setError('');
@@ -42,6 +66,11 @@ export default function Dashboard() {
       setGames(gamesRes.data.games.slice(0, Number(maxGames) || 5));
       setAnalyzedUsername(chessUsername);
       setAnalyzed(true);
+      try {
+        localStorage.setItem('chessUsername', chessUsername);
+      } catch {
+        // storage can be unavailable; the Dashboard still works
+      }
     } catch (err) {
       setError(err.response?.data?.detail || 'Refresh failed');
     } finally {
@@ -63,6 +92,11 @@ export default function Dashboard() {
       setGames(gamesRes.data.games.slice(0, Number(maxGames) || 5));
       setAnalyzedUsername(chessUsername);
       setAnalyzed(true);
+      try {
+        localStorage.setItem('chessUsername', chessUsername);
+      } catch {
+        // storage can be unavailable; the Dashboard still works
+      }
     } catch (err) {
       setError(err.response?.data?.detail || 'Analysis failed');
     } finally {
@@ -181,6 +215,8 @@ export default function Dashboard() {
               </p>
             </div>
           )}
+
+          <ProgressPanel username={analyzedUsername} refreshKey={stats} />
 
           <div className="card">
             <h2>Recent Games</h2>
