@@ -337,7 +337,7 @@ export default function GameReport() {
           )}
 
           <div style={{ display: 'flex', alignItems: 'flex-start' }}>
-            <EvalBar evalScore={barEval} />
+            <EvalBar evalScore={barEval} flip={orientation === 'black'} />
             <ChessBoard
               fen={displayFen}
               onDrop={handlePieceDrop}

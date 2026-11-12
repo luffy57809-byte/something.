@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function EvalBar({ evalScore, color = 'white' }) {
+export default function EvalBar({ evalScore, color = 'white', flip = false }) {
   // evalScore is in centipawns from white's perspective
   // Clamp between -1000 and 1000 for display
   const clamp = (val, min, max) => Math.min(Math.max(val, min), max);
@@ -36,7 +36,7 @@ export default function EvalBar({ evalScore, color = 'white' }) {
         border: '1px solid #7a4f35',
         position: 'relative',
         display: 'flex',
-        flexDirection: 'column',
+        flexDirection: flip ? 'column-reverse' : 'column',
       }}>
         {/* Black's portion (top) */}
         <div style={{
