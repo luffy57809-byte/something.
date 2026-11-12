@@ -3,6 +3,7 @@ import threading
 import time
 import hashlib
 import html as _html
+import uuid as _uuid
 import os as _os
 from fastapi import FastAPI, HTTPException, Depends, Header, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -86,7 +87,8 @@ def root():
 
 
 # --- Protect the heavy endpoints (Stockfish is slow and the server is small) ---
-_HEAVY_SLOT = threading.Semaphore(1)   # one analysis at a time
+HEAVY_SLOTS = int(_os.environ.get("HEAVY_SLOTS", "2"))
+_HEAVY_SLOT = threading.Semaphore(HEAVY_SLOTS)   # analyses allowed at the same time
 _LAST_HEAVY = {}
 HEAVY_COOLDOWN_SECONDS = 20
 
@@ -409,6 +411,183 @@ def _cached_games(key, loader):
         if games:
             _cache_put(key, games)
     return games
+
+
+# --- Cheat detection as a queued background job, so the page can show progress ---
+import queue as _queue
+
+_JOBS = {}
+_JOB_QUEUE = _queue.Queue()
+_WORKER = {"thread": None}
+_WORKER_LOCK = threading.Lock()
+MAX_WAITING_JOBS = 8
+JOB_ABANDON_SECONDS = 90   # drop a job if its page stops checking in
+MAX_JOB_SECONDS = 900
+
+
+def _job_abandoned(job):
+    return time.time() - job["last_poll"] > JOB_ABANDON_SECONDS
+
+
+def _run_detect_job(job_id, username, source, max_games):
+    job = _JOBS[job_id]
+    try:
+        import re as _re2
+        from chess_detector.fetcher import get_chesscom_games, get_lichess_games
+        from chess_detector.core.analyzer import analyze_pgn as detect_analyze_pgn
+        from chess_detector.scorer import SuspicionScorer
+
+        if source == "chesscom":
+            pgns = _cached_games(("chesscom", username.lower()),
+                                 lambda: get_chesscom_games(username, max_games=40))
+        else:
+            pgns = _cached_games(("lichess", username.lower()),
+                                 lambda: get_lichess_games(username, max_games=40))
+        if not pgns:
+            raise ValueError("No games found for this user")
+
+        def base_seconds(pgn):
+            m = _re2.search(r'\[TimeControl "(\d+)', pgn)
+            return int(m.group(1)) if m else 0
+
+        pgns = [g for g in pgns if base_seconds(g) >= 180]
+        if not pgns:
+            raise ValueError("No blitz or longer games found (bullet games are too short to judge)")
+
+        scorer = SuspicionScorer()
+        depth = int(_os.environ.get("DETECT_DEPTH", "12"))
+        job["total"] = min(max_games, len(pgns))
+        last_error = None
+
+        for pgn_text in pgns[:max_games * 2]:
+            if len(job["reports"]) >= max_games:
+                break
+            if _job_abandoned(job):
+                raise ValueError("Stopped because the page stopped checking in.")
+            if time.time() - job["started"] > MAX_JOB_SECONDS:
+                break
+            try:
+                cache_key = ("detect", hashlib.sha1(pgn_text.encode()).hexdigest(), username.lower())
+                entry = _cache_get(cache_key, 24 * 3600)
+                if entry is None:
+                    analysis = detect_analyze_pgn(pgn_text, depth=depth)
+                    if analysis is None:
+                        continue
+                    me = username.lower()
+                    color = ("white" if analysis.white_username.lower() == me
+                             else "black" if analysis.black_username.lower() == me else None)
+                    if color is None:
+                        continue
+                    report = scorer.score(analysis, username, color, pgn_text=pgn_text)
+                    if report.features and report.features[0].name == "Sample size":
+                        continue  # too few analyzable moves to judge this game
+                    entry = {
+                        "game_id": report.game_id,
+                        "color": report.color,
+                        "overall_score": report.overall_score,
+                        "verdict": report.verdict,
+                        "features": [{"name": f.name, "score": f.score, "note": f.note,
+                                      "weight": f.weight} for f in report.features],
+                        "flagged_moves": report.flagged_moves,
+                    }
+                    _cache_put(cache_key, entry)
+                job["reports"].append(entry)
+            except Exception as e:
+                print(f"Skipping game: {e}")
+                last_error = str(e)
+                continue
+
+        if not job["reports"]:
+            raise ValueError(f"Analysis failed: {last_error[:200]}" if last_error else
+                             "Not enough analyzable moves to judge fairly (the games may be too short or decided early)")
+
+        reports = job["reports"]
+        avg = round(sum(r["overall_score"] for r in reports) / len(reports), 1)
+        verdict = "clean" if avg < 30 else "suspicious" if avg < 60 else "likely cheating"
+        if len(reports) < 3 and verdict == "likely cheating":
+            verdict = "suspicious"  # too few games for the strongest verdict
+        job.update(state="done", average_score=avg, overall_verdict=verdict,
+                   games_analyzed=len(reports))
+    except Exception as e:
+        job.update(state="error", error=str(e)[:300])
+
+
+def _worker_loop():
+    while True:
+        job_id = _JOB_QUEUE.get()
+        job = _JOBS.get(job_id)
+        if job is None or job["state"] != "queued":
+            continue
+        if _job_abandoned(job):
+            job.update(state="error", error="Stopped because the page stopped checking in.")
+            continue
+        try:
+            with _HEAVY_SLOT:
+                job["state"] = "running"
+                job["started"] = time.time()
+                _run_detect_job(job_id, job["username"], job["source"], job["max_games"])
+        except Exception as e:
+            job.update(state="error", error=str(e)[:300])
+
+
+def _ensure_worker():
+    with _WORKER_LOCK:
+        t = _WORKER["thread"]
+        if t is None or not t.is_alive():
+            t = threading.Thread(target=_worker_loop, daemon=True)
+            t.start()
+            _WORKER["thread"] = t
+
+
+@app.post("/detect/start")
+def detect_start(req: DetectRequest, current_user: dict = Depends(get_current_user)):
+    if email_enabled() and not current_user.get("email_verified", True):
+        raise HTTPException(status_code=403,
+                            detail="Please verify your email first. Check your inbox for the link.")
+    max_games = max(1, min(req.max_games, 10))
+    now = time.time()
+    for jid in [j for j, v in _JOBS.items() if now - v["created"] > 3600]:
+        _JOBS.pop(jid, None)
+
+    # Already have a job going? Reconnect to it instead of starting another
+    for jid, v in _JOBS.items():
+        if v["user"] == current_user["id"] and v["state"] in ("queued", "running"):
+            v["last_poll"] = now
+            return {"job_id": jid, "resumed": True}
+
+    waiting = sum(1 for v in _JOBS.values() if v["state"] == "queued")
+    if waiting >= MAX_WAITING_JOBS:
+        raise HTTPException(status_code=429,
+                            detail="Lots of people are using this right now. Please try again in a few minutes.")
+
+    job_id = _uuid.uuid4().hex
+    _JOBS[job_id] = {"user": current_user["id"], "created": now, "last_poll": now,
+                     "state": "queued", "username": req.chess_username, "source": req.source,
+                     "max_games": max_games, "total": max_games, "reports": []}
+    _JOB_QUEUE.put(job_id)
+    _ensure_worker()
+    return {"job_id": job_id}
+
+
+@app.get("/detect/status/{job_id}")
+def detect_status(job_id: str, current_user: dict = Depends(get_current_user)):
+    job = _JOBS.get(job_id)
+    if not job or job["user"] != current_user["id"]:
+        raise HTTPException(status_code=404,
+                            detail="This analysis is no longer available. Please run it again.")
+    job["last_poll"] = time.time()
+    position = 0
+    if job["state"] == "queued":
+        position = sum(1 for v in _JOBS.values()
+                       if v["state"] in ("queued", "running") and v["created"] < job["created"])
+    return {
+        "state": job["state"], "username": job["username"], "total": job["total"],
+        "reports": list(job["reports"]), "error": job.get("error"),
+        "position": position,
+        "average_score": job.get("average_score"),
+        "overall_verdict": job.get("overall_verdict"),
+        "games_analyzed": job.get("games_analyzed"),
+    }
 
 
 @app.post("/detect", dependencies=[Depends(heavy_job_guard)])

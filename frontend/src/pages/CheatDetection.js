@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { detectCheating } from '../api';
+import { startDetection, getDetectionStatus } from '../api';
 import './CheatDetection.css';
 
 const VERDICT_CONFIG = {
@@ -18,19 +18,60 @@ export default function CheatDetection() {
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
   const [expandedGame, setExpandedGame] = useState(null);
+  const [progress, setProgress] = useState(null);
+  const [partial, setPartial] = useState([]);
+  const cancelled = useRef(false);
+
+  useEffect(() => {
+    cancelled.current = false;
+    return () => { cancelled.current = true; };
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setResult(null);
+    setPartial([]);
+    setProgress(null);
     setLoading(true);
     try {
-      const res = await detectCheating(chessUsername, maxGames, source);
-      setResult(res.data);
+      const start = await startDetection(chessUsername, maxGames, source);
+      const jobId = start.data.job_id;
+      let failures = 0;
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 2500));
+        if (cancelled.current) return;
+        let st;
+        try {
+          st = (await getDetectionStatus(jobId)).data;
+          failures = 0;
+        } catch (err) {
+          failures += 1;
+          if ((err.response && err.response.status === 404) || failures >= 5) throw err;
+          continue;
+        }
+        setProgress({ total: st.total, state: st.state, position: st.position });
+        setPartial(st.reports);
+        if (st.state === 'done') {
+          setResult({
+            username: st.username,
+            games_analyzed: st.games_analyzed,
+            average_score: st.average_score,
+            overall_verdict: st.overall_verdict,
+            reports: st.reports,
+          });
+          break;
+        }
+        if (st.state === 'error') {
+          setError(st.error || 'Detection failed');
+          break;
+        }
+      }
     } catch (err) {
       setError(err.response?.data?.detail || 'Detection failed');
     } finally {
       setLoading(false);
+      setProgress(null);
     }
   };
 
@@ -82,10 +123,36 @@ export default function CheatDetection() {
           </div>
           {error && <p className="error">{error}</p>}
           <button className="btn btn-primary" type="submit" disabled={loading}>
-            {loading ? 'Analyzing... (this may take a few minutes)' : 'Run Detection'}
+            {loading ? 'Analyzing...' : 'Run Detection'}
           </button>
         </form>
       </div>
+
+      {loading && progress && (
+        <div className="card">
+          <p>
+            {progress.state === 'queued'
+              ? (progress.position > 0
+                  ? `Waiting in line: ${progress.position} ahead of you...`
+                  : 'Starting...')
+              : `Analyzing game ${Math.min(partial.length + 1, progress.total)} of ${progress.total}...`}
+          </p>
+          <div className="verdict-score-bar">
+            <div
+              className="verdict-score-fill"
+              style={{
+                width: `${(partial.length / progress.total) * 100}%`,
+                background: 'var(--brass)',
+              }}
+            />
+          </div>
+          {partial.map((r, i) => (
+            <p key={i} className="feature-note">
+              Game {i + 1} ({r.color}): score {r.overall_score}
+            </p>
+          ))}
+        </div>
+      )}
 
       {result && verdictConfig && (
         <>
