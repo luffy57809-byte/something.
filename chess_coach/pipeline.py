@@ -79,6 +79,24 @@ def get_game_report(game_id: str) -> dict | None:
         if m.classification in ("blunder", "mistake", "inaccuracy")
     ]
 
+    all_moves = [
+        {
+            "ply": i + 1,
+            "move_number": m.move_number,
+            "color": m.color,
+            "move_san": m.move_san,
+            "classification": m.classification,
+            "best_move_san": m.best_move_san,
+            "eval_before": m.eval_before,
+            "eval_after": m.eval_after,
+            "eval_drop": m.eval_drop,
+            "fen_before": m.fen_before,
+            "fen_after": m.fen_after,
+            "explanation": m.explanation,
+        }
+        for i, m in enumerate(record.moves)
+    ]
+
     return {
         "game_id": game_id,
         "white": record.white,
@@ -87,4 +105,5 @@ def get_game_report(game_id: str) -> dict | None:
         "date": record.date,
         "summary": summary,
         "flagged_moves": flagged,
+        "moves": all_moves,
     }

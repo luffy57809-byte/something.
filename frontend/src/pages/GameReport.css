@@ -64,3 +64,48 @@
 .move-feedback.shown   { background: rgba(211, 165, 72, 0.16);  color: var(--brass); }
 
 @media (max-width: 800px) { .report-body { grid-template-columns: 1fr; } }
+
+.rep-tabs { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
+.rep-tab {
+  flex: 1;
+  padding: 0.4rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--felt);
+  color: var(--muted);
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+}
+.rep-tab.active { background: var(--brass); color: var(--felt); border-color: var(--brass); font-weight: 600; }
+
+.move-grid { display: flex; flex-direction: column; gap: 2px; }
+.mv-row { display: grid; grid-template-columns: 2.2rem 1fr 1fr; align-items: center; gap: 4px; }
+.mv-num { color: var(--muted); font-size: 0.85rem; text-align: right; padding-right: 0.25rem; }
+.mv {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 0.25rem 0.4rem;
+  text-align: left;
+  cursor: pointer;
+  font-family: monospace;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+.mv:hover { background: var(--felt); }
+.mv.selected { background: var(--felt); border-color: var(--brass); }
+.mv-inaccuracy { color: var(--inaccuracy); }
+.mv-mistake { color: var(--mistake); }
+.mv-blunder { color: var(--blunder); }
+.mv-empty { cursor: default; }
+
+.eval-graph {
+  cursor: pointer;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  margin-top: 0.75rem;
+}
+.eval-line { color: var(--muted); font-size: 0.85rem; margin-bottom: 0.5rem; }
+.opp-line { color: var(--muted); font-size: 0.85rem; margin: -1rem 0 1.5rem; }

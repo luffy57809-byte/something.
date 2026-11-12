@@ -15,7 +15,7 @@ const THEME = {
 
 const isLight = (sq) => (sq.charCodeAt(0) - 97 + Number(sq[1])) % 2 === 0;
 
-export default function ChessBoard({ fen, onDrop, draggable = true, orientation = 'white' }) {
+export default function ChessBoard({ fen, onDrop, draggable = true, orientation = 'white', arrows = null, highlightMove = null }) {
   const position = !fen || fen === 'start' ? new Chess().fen() : fen;
   const [selected, setSelected] = useState(null);
   const [lastMove, setLastMove] = useState(null);
@@ -68,8 +68,9 @@ export default function ChessBoard({ fen, onDrop, draggable = true, orientation 
 
   const squareStyles = useMemo(() => {
     const styles = {};
-    if (lastMove) {
-      [lastMove.from, lastMove.to].forEach((sq) => {
+    const shownLast = highlightMove || lastMove;
+    if (shownLast) {
+      [shownLast.from, shownLast.to].forEach((sq) => {
         styles[sq] = { backgroundColor: isLight(sq) ? THEME.lastLight : THEME.lastDark };
       });
     }
@@ -84,7 +85,7 @@ export default function ChessBoard({ fen, onDrop, draggable = true, orientation 
       styles[m.to] = { ...(styles[m.to] || {}), backgroundImage: marker };
     });
     return styles;
-  }, [lastMove, selected, legalMoves]);
+  }, [lastMove, highlightMove, selected, legalMoves]);
 
   const options = {
     id: 'chesslytic-board',
@@ -103,6 +104,7 @@ export default function ChessBoard({ fen, onDrop, draggable = true, orientation 
     darkSquareNotationStyle: { color: THEME.light },
     boardStyle: { borderRadius: 4, boxShadow: '0 0 0 3px #7a4f35' },
     animationDurationInMs: 180,
+    ...(arrows ? { arrows } : {}),
   };
 
   return (
