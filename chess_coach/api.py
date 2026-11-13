@@ -5,7 +5,7 @@ import hashlib
 import html as _html
 import uuid as _uuid
 import os as _os
-from fastapi import FastAPI, HTTPException, Depends, Header, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, Header, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -20,6 +20,7 @@ from chess_coach.auth import (
     get_user_by_email, mark_email_verified, set_password
 )
 from chess_coach.email_service import send_email, email_enabled
+from chess_coach.throttle import LoginThrottle
 from chess_coach.analysis.engine import find_stockfish
 from chess_coach.puzzles import (
     init_puzzles_table, get_training_puzzles,
@@ -144,11 +145,23 @@ def register(req: RegisterRequest, background: BackgroundTasks):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+_login_throttle = LoginThrottle()
+
+
 @app.post("/auth/login")
-def login(req: LoginRequest):
+def login(req: LoginRequest, request: Request):
+    ip = request.client.host if request.client else "unknown"
+    wait = _login_throttle.wait_seconds(req.username, ip)
+    if wait:
+        minutes = max(1, (wait + 59) // 60)
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many failed login attempts. Please try again in {minutes} minute(s).")
     user = authenticate_user(req.username, req.password)
     if not user:
+        _login_throttle.record_failure(req.username, ip)
         raise HTTPException(status_code=401, detail="Invalid username or password")
+    _login_throttle.record_success(req.username)
     token = create_access_token({"sub": user["username"]})
     return {
         "access_token": token,
