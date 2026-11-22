@@ -28,7 +28,7 @@ export default function GameReport() {
   const [sel, setSel] = useState(0);
   const [tab, setTab] = useState('all');
   const [mode, setMode] = useState('view');
-  const [showAfter, setShowAfter] = useState(false);
+  const [showAfter, setShowAfter] = useState(true);
   const [playFen, setPlayFen] = useState(null);
   const [moveStatus, setMoveStatus] = useState('');
   const [flipped, setFlipped] = useState(false);
@@ -50,7 +50,7 @@ export default function GameReport() {
     if (!moves.length) return;
     setSel(Math.max(0, Math.min(moves.length - 1, i)));
     setMode('view');
-    setShowAfter(false);
+    setShowAfter(true);
     setPlayFen(null);
     setMoveStatus('');
   };
@@ -108,9 +108,9 @@ export default function GameReport() {
   const highlight = viewing ? (showAfter ? playedSq : prevSq) : null;
 
   let arrows = null;
-  if (viewing && !showAfter && flagged) {
+  if (viewing && flagged) {
     arrows = [];
-    if (playedSq) arrows.push({ startSquare: playedSq.from, endSquare: playedSq.to, color: '#f0766b' });
+    if (!showAfter && playedSq) arrows.push({ startSquare: playedSq.from, endSquare: playedSq.to, color: '#f0766b' });
     if (bestSq) arrows.push({ startSquare: bestSq.from, endSquare: bestSq.to, color: '#7fc98f' });
   }
 

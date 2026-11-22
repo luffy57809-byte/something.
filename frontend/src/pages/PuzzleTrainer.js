@@ -54,6 +54,8 @@ export default function PuzzleTrainer() {
   const currentPuzzle = currentType === 'game'
     ? puzzles[currentIndex]
     : lichessPuzzles[currentIndex];
+  const startFen = currentPuzzle ? (currentPuzzle.fen_before || currentPuzzle.fen || '') : '';
+  const puzzleOrientation = startFen.split(' ')[1] === 'b' ? 'black' : 'white';
 
   useEffect(() => {
     getPuzzleStats().then((res) => setPuzzleStats(res.data.puzzle_stats));
@@ -367,6 +369,7 @@ export default function PuzzleTrainer() {
                 <EvalBar evalScore={evalScore} />
                 <ChessBoard
                   fen={currentFen}
+                  orientation={puzzleOrientation}
                   onDrop={onDrop}
                   draggable={!moveStatus || moveStatus === 'correct' || moveStatus === 'wrong' || moveStatus === 'freeplay'}
                 />
