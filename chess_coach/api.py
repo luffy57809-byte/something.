@@ -17,10 +17,12 @@ from chess_coach.auth import (
     init_users_table, create_user, authenticate_user,
     create_access_token, decode_token, get_user_by_username,
     create_purpose_token, decode_purpose_token, password_fingerprint,
-    get_user_by_email, mark_email_verified, set_password
+    get_user_by_email, mark_email_verified, set_password,
+    get_board_settings, set_board_settings
 )
 from chess_coach.email_service import send_email, email_enabled
 from chess_coach.throttle import LoginThrottle
+from chess_coach.board_settings import normalize_settings
 from chess_coach.analysis.engine import find_stockfish
 from chess_coach.puzzles import (
     init_puzzles_table, get_training_puzzles,
@@ -276,6 +278,23 @@ def reset_password(req: ResetRequest):
     set_password(user["username"], req.password)
     mark_email_verified(user["username"])  # they proved they control this address
     return {"reset": True}
+
+
+class SettingsRequest(BaseModel):
+    settings: dict
+
+
+@app.get("/user/settings")
+def read_settings(current_user: dict = Depends(get_current_user)):
+    raw = get_board_settings(current_user["username"])
+    return {"settings": normalize_settings(raw), "saved": bool(raw)}
+
+
+@app.put("/user/settings")
+def write_settings(req: SettingsRequest, current_user: dict = Depends(get_current_user)):
+    clean = normalize_settings(req.settings)
+    set_board_settings(current_user["username"], clean)
+    return {"settings": clean, "saved": True}
 
 
 @app.get("/auth/me")

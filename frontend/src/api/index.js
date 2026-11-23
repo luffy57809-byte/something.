@@ -66,5 +66,9 @@ export const startDetection = (chess_username, max_games, source) =>
 export const getDetectionStatus = (jobId) =>
   API.get(`/detect/status/${jobId}`);
 
+export const getBoardSettings = () => API.get('/user/settings');
+
+export const saveBoardSettings = (settings) => API.put('/user/settings', { settings });
+
 export const getProgress = (username) =>
   API.get(`/user/${encodeURIComponent(username)}/progress`);

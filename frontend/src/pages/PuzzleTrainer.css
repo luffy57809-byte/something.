@@ -33,7 +33,7 @@
 .tab:hover { color: var(--maple); }
 .tab.active { background: var(--brass); color: var(--felt); border-color: var(--brass); font-weight: 600; }
 
-.puzzle-body { display: flex; flex-direction: column; align-items: flex-start; gap: 1rem; max-width: 500px; }
+.puzzle-body { display: flex; flex-direction: column; align-items: flex-start; gap: 1rem; max-width: 580px; }
 .puzzle-info { width: 100%; }
 
 .puzzle-label { font-size: 1rem; font-weight: 600; color: var(--maple); margin-bottom: 0.3rem; }

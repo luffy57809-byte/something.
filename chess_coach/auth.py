@@ -1,4 +1,5 @@
 import os
+import json
 import hashlib
 from datetime import datetime, timedelta
 from typing import Optional
@@ -33,6 +34,13 @@ def init_users_table():
         try:
             conn.execute(text("ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0"))
             conn.execute(text("UPDATE users SET email_verified = 1"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        # Board settings saved per account
+        try:
+            conn.execute(text("ALTER TABLE users ADD COLUMN board_settings TEXT"))
             conn.commit()
         except Exception:
             conn.rollback()
@@ -166,4 +174,24 @@ def set_password(username: str, new_password: str) -> None:
     with engine.connect() as conn:
         conn.execute(text("UPDATE users SET hashed_password = :h WHERE username = :u"),
                      {"h": hash_password(new_password), "u": username})
+        conn.commit()
+
+
+def get_board_settings(username: str) -> dict:
+    with engine.connect() as conn:
+        row = conn.execute(text("SELECT board_settings FROM users WHERE username = :u"),
+                           {"u": username}).fetchone()
+    if not row or not row[0]:
+        return {}
+    try:
+        data = json.loads(row[0])
+    except ValueError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def set_board_settings(username: str, settings: dict) -> None:
+    with engine.connect() as conn:
+        conn.execute(text("UPDATE users SET board_settings = :s WHERE username = :u"),
+                     {"s": json.dumps(settings), "u": username})
         conn.commit()

@@ -1,6 +1,8 @@
 import React from 'react';
+import { useBoardSettings } from '../context/BoardSettingsContext';
 
 export default function EvalBar({ evalScore, color = 'white', flip = false }) {
+  const { size } = useBoardSettings();
   // evalScore is in centipawns from white's perspective
   // Clamp between -1000 and 1000 for display
   const clamp = (val, min, max) => Math.min(Math.max(val, min), max);
@@ -30,7 +32,7 @@ export default function EvalBar({ evalScore, color = 'white', flip = false }) {
     }}>
       <div style={{
         width: '24px',
-        height: '416px',
+        height: `${size}px`,
         borderRadius: '4px',
         overflow: 'hidden',
         border: '1px solid #7a4f35',

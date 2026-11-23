@@ -11,6 +11,8 @@ import VerifyEmail from './pages/VerifyEmail';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import { resendVerification } from './api';
+import Settings from './pages/Settings';
+import { BoardSettingsProvider } from './context/BoardSettingsContext';
 import Navbar from './components/Navbar';
 import './App.css';
 
@@ -45,6 +47,7 @@ function VerifyBanner() {
 function App() {
   return (
     <AuthProvider>
+      <BoardSettingsProvider>
       <BrowserRouter>
         <Navbar />
         <VerifyBanner />
@@ -55,6 +58,9 @@ function App() {
             <Route path="/verify" element={<VerifyEmail />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/settings" element={
+              <PrivateRoute><Settings /></PrivateRoute>
+            } />
             <Route path="/" element={
               <PrivateRoute><Dashboard /></PrivateRoute>
             } />
@@ -70,6 +76,7 @@ function App() {
           </Routes>
         </div>
       </BrowserRouter>
+    </BoardSettingsProvider>
     </AuthProvider>
   );
 }

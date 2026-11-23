@@ -1,21 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
-
-// To use chess.com's green instead of the wood look, set
-// light: '#eeeed2' and dark: '#769656'.
-const THEME = {
-  light: '#ecdcb8',
-  dark: '#7a4f35',
-  lastLight: '#efd98f',
-  lastDark: '#b89242',
-  selLight: '#f3c969',
-  selDark: '#c99a2e',
-};
+import { BOARD_THEMES, HIGHLIGHTS, ANIMATION_MS } from '../utils/boardThemes';
+import { useBoardSettings } from '../context/BoardSettingsContext';
 
 const isLight = (sq) => (sq.charCodeAt(0) - 97 + Number(sq[1])) % 2 === 0;
 
-export default function ChessBoard({ fen, onDrop, draggable = true, orientation = 'white', arrows = null, highlightMove = null }) {
+export default function ChessBoard({
+  fen, onDrop, draggable = true, orientation = 'white', arrows = null, highlightMove = null,
+}) {
+  const { settings, size } = useBoardSettings();
+  const theme = BOARD_THEMES[settings.theme] || BOARD_THEMES.walnut;
+  const hl = HIGHLIGHTS[settings.highlight] || HIGHLIGHTS.gold;
+
   const position = !fen || fen === 'start' ? new Chess().fen() : fen;
   const [selected, setSelected] = useState(null);
   const [lastMove, setLastMove] = useState(null);
@@ -71,21 +68,23 @@ export default function ChessBoard({ fen, onDrop, draggable = true, orientation 
     const shownLast = highlightMove || lastMove;
     if (shownLast) {
       [shownLast.from, shownLast.to].forEach((sq) => {
-        styles[sq] = { backgroundColor: isLight(sq) ? THEME.lastLight : THEME.lastDark };
+        styles[sq] = { backgroundColor: isLight(sq) ? hl.lastLight : hl.lastDark };
       });
     }
     if (selected) {
-      styles[selected] = { backgroundColor: isLight(selected) ? THEME.selLight : THEME.selDark };
+      styles[selected] = { backgroundColor: isLight(selected) ? hl.selLight : hl.selDark };
     }
-    legalMoves.forEach((m) => {
-      const capture = m.captured || (m.flags || '').includes('e');
-      const marker = capture
-        ? 'radial-gradient(circle, transparent 62%, rgba(0,0,0,0.28) 64%)'
-        : 'radial-gradient(circle, rgba(0,0,0,0.28) 20%, transparent 22%)';
-      styles[m.to] = { ...(styles[m.to] || {}), backgroundImage: marker };
-    });
+    if (settings.legalMoves) {
+      legalMoves.forEach((m) => {
+        const capture = m.captured || (m.flags || '').includes('e');
+        const marker = capture
+          ? 'radial-gradient(circle, transparent 62%, rgba(0,0,0,0.28) 64%)'
+          : 'radial-gradient(circle, rgba(0,0,0,0.28) 20%, transparent 22%)';
+        styles[m.to] = { ...(styles[m.to] || {}), backgroundImage: marker };
+      });
+    }
     return styles;
-  }, [lastMove, highlightMove, selected, legalMoves]);
+  }, [lastMove, highlightMove, selected, legalMoves, hl, settings.legalMoves]);
 
   const options = {
     id: 'chesslytic-board',
@@ -98,17 +97,19 @@ export default function ChessBoard({ fen, onDrop, draggable = true, orientation 
     },
     onSquareClick: handleSquareClick,
     squareStyles,
-    lightSquareStyle: { backgroundColor: THEME.light },
-    darkSquareStyle: { backgroundColor: THEME.dark },
-    lightSquareNotationStyle: { color: THEME.dark },
-    darkSquareNotationStyle: { color: THEME.light },
-    boardStyle: { borderRadius: 4, boxShadow: '0 0 0 3px #7a4f35' },
-    animationDurationInMs: 180,
+    lightSquareStyle: { backgroundColor: theme.light },
+    darkSquareStyle: { backgroundColor: theme.dark },
+    lightSquareNotationStyle: { color: theme.dark },
+    darkSquareNotationStyle: { color: theme.light },
+    showNotation: settings.coordinates,
+    boardStyle: { borderRadius: 4, boxShadow: `0 0 0 3px ${theme.dark}` },
+    showAnimations: settings.animation !== 'off',
+    animationDurationInMs: ANIMATION_MS[settings.animation],
     ...(arrows ? { arrows } : {}),
   };
 
   return (
-    <div style={{ width: 416, maxWidth: '100%', minWidth: 0 }}>
+    <div style={{ width: size, maxWidth: '100%', minWidth: 0 }}>
       <Chessboard options={options} />
     </div>
   );
