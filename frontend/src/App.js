@@ -11,6 +11,7 @@ import VerifyEmail from './pages/VerifyEmail';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import { resendVerification } from './api';
+import { Analytics } from '@vercel/analytics/react';
 import Settings from './pages/Settings';
 import { BoardSettingsProvider } from './context/BoardSettingsContext';
 import Navbar from './components/Navbar';
@@ -51,6 +52,7 @@ function App() {
       <BrowserRouter>
         <Navbar />
         <VerifyBanner />
+        <Analytics />
         <div className="app-container">
           <Routes>
             <Route path="/login" element={<Login />} />

@@ -16,7 +16,7 @@ from chess_coach.stats import get_user_stats, get_user_progress
 from chess_coach.auth import (
     init_users_table, create_user, authenticate_user,
     create_access_token, decode_token, get_user_by_username,
-    create_purpose_token, decode_purpose_token, password_fingerprint,
+    create_purpose_token, decode_purpose_token, password_fingerprint, touch_last_seen,
     get_user_by_email, mark_email_verified, set_password,
     get_board_settings, set_board_settings
 )
@@ -164,6 +164,7 @@ def login(req: LoginRequest, request: Request):
         _login_throttle.record_failure(req.username, ip)
         raise HTTPException(status_code=401, detail="Invalid username or password")
     _login_throttle.record_success(req.username)
+    _record_visit(user)
     token = create_access_token({"sub": user["username"]})
     return {
         "access_token": token,
@@ -297,8 +298,24 @@ def write_settings(req: SettingsRequest, current_user: dict = Depends(get_curren
     return {"settings": clean, "saved": True}
 
 
+_LAST_VISIT = {}
+
+
+def _record_visit(user: dict):
+    # note when someone was last on the site; at most one database write per 30 minutes each
+    now = time.time()
+    if now - _LAST_VISIT.get(user["id"], 0) < 1800:
+        return
+    _LAST_VISIT[user["id"]] = now
+    try:
+        touch_last_seen(user["id"])
+    except Exception as e:
+        print(f"last_seen update failed: {e}")
+
+
 @app.get("/auth/me")
 def me(current_user: dict = Depends(get_current_user)):
+    _record_visit(current_user)
     return {
         "id": current_user["id"],
         "username": current_user["username"],

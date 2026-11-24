@@ -38,6 +38,13 @@ def init_users_table():
         except Exception:
             conn.rollback()
 
+        # When the account was last on the site (UTC)
+        try:
+            conn.execute(text("ALTER TABLE users ADD COLUMN last_seen TEXT"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         # Board settings saved per account
         try:
             conn.execute(text("ALTER TABLE users ADD COLUMN board_settings TEXT"))
@@ -194,4 +201,12 @@ def set_board_settings(username: str, settings: dict) -> None:
     with engine.connect() as conn:
         conn.execute(text("UPDATE users SET board_settings = :s WHERE username = :u"),
                      {"s": json.dumps(settings), "u": username})
+        conn.commit()
+
+
+def touch_last_seen(user_id: int) -> None:
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    with engine.connect() as conn:
+        conn.execute(text("UPDATE users SET last_seen = :t WHERE id = :i"),
+                     {"t": now, "i": user_id})
         conn.commit()
